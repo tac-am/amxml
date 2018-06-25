@@ -1,0 +1,9 @@
+[package]
+name = "amxml"
+version = "0.4.8"
+authors = ["KOYAMA Hiro <tac@amris.co.jp>"]
+description = "XML processor with XPath"
+license = "MIT OR Apache-2.0"
+keywords = ["XML", "XPath", "XPath2", "DOM", "SAX"]
+
+[dependencies]
