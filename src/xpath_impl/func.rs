@@ -1,5 +1,5 @@
 //
-// xpath2/func.rs
+// xpath_impl/func.rs
 //
 // amxml: XML processor with XPath.
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
@@ -11,26 +11,14 @@ use std::i64;
 use std::usize;
 
 use xmlerror::*;
-use xpath2::eval::*;
-use xpath2::xitem::*;
-use xpath2::xsequence::*;
+use xpath_impl::eval::*;
+use xpath_impl::xitem::*;
+use xpath_impl::xsequence::*;
 
 // ---------------------------------------------------------------------
 //
 fn usize_to_i64(n: usize) -> i64 {
     return n as i64;
-}
-
-fn f64_to_i64(f: f64) -> i64 {
-    if f.is_infinite() {
-        if f.is_sign_positive() {
-            return i64::MAX;
-        } else {
-            return i64::MIN;
-        }
-    } else {
-        return f as i64;
-    }
 }
 
 // ---------------------------------------------------------------------
@@ -59,24 +47,33 @@ const FUNC_TBL: [(&str,             // 函数名
                   usize,            // 引数の数: min
                   usize,            // 引数の数: max
                   bool);            // 引数が不足しているとき文脈ノードを補う
-                  25] = [
+                  47] = [
 // 2
     ( "string",                 fn_string,                 1, 1, true ),
+    ( "data",                   fn_data,                   1, 1, false ),
 // 6.4
+    ( "abs",                    fn_abs,                    1, 1, false ),
     ( "ceiling",                fn_ceiling,                1, 1, false ),
     ( "floor",                  fn_floor,                  1, 1, false ),
     ( "round",                  fn_round,                  1, 1, false ),
+// 7.2.1
+    ( "codepoints-to-string",   fn_codepoints_to_string,   1, 1, false ),
+    ( "string-to-codepoints",   fn_string_to_codepoints,   1, 1, false ),
 // 7.3
     ( "compare",                fn_compare,                2, 3, false ),
 // 7.4
     ( "concat",                 fn_concat,                 2, M, false ),
+    ( "string-join",            fn_string_join,            2, 2, false ),
     ( "substring",              fn_substring,              2, 3, false ),
     ( "string-length",          fn_string_length,          1, 1, true ),
     ( "normalize-space",        fn_normalize_space,        1, 1, true ),
+    ( "upper-case",             fn_upper_case,             1, 1, false ),
+    ( "lower-case",             fn_lower_case,             1, 1, false ),
     ( "translate",              fn_translate,              3, 3, false ),
 // 7.5
     ( "contains",               fn_contains,               2, 3, false ),
     ( "starts-with",            fn_starts_with,            2, 3, false ),
+    ( "ends-with",              fn_ends_with,              2, 3, false ),
     ( "substring-before",       fn_substring_before,       2, 3, false ),
     ( "substring-after",        fn_substring_after,        2, 3, false ),
 // 9.1
@@ -90,11 +87,26 @@ const FUNC_TBL: [(&str,             // 函数名
     ( "namespace-uri",          fn_namespace_uri,          1, 1, true ),
     ( "number",                 fn_number,                 1, 1, true ),
     ( "lang",                   fn_lang,                   1, 2, true ),
+    ( "root",                   fn_root,                   1, 1, true ),
 // 15.1
     ( "boolean",                fn_boolean,                1, 1, false ),
+    ( "index-of",               fn_index_of,               2, 3, false ),
+    ( "empty",                  fn_empty,                  1, 1, false ),
+    ( "exists",                 fn_exists,                 1, 1, false ),
+    ( "insert-before",          fn_insert_before,          3, 3, false ),
+    ( "remove",                 fn_remove,                 2, 2, false ),
+    ( "reverse",                fn_reverse,                1, 1, false ),
+    ( "subsequence",            fn_subsequence,            2, 3, false ),
+// 15.2
+    ( "zero-or-one",            fn_zero_or_one,            1, 1, false ),
+    ( "one-or-more",            fn_one_or_more,            1, 1, false ),
+    ( "exactly-one",            fn_exactly_one,            1, 1, false ),
 // 15.3
 // 15.4
     ( "count",                  fn_count,                  1, 1, false ),
+    ( "avg",                    fn_avg,                    1, 1, false ),
+    ( "max",                    fn_max,                    1, 2, false ),
+    ( "min",                    fn_min,                    1, 2, false ),
     ( "sum",                    fn_sum,                    1, 2, false ),
     // funcname, func, min_args, max_args, default_is_context_node_set
     // ( "id",                    fn_id,                     1, 2, true ),
@@ -242,8 +254,16 @@ fn fn_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     }
 
     let item = args[0].get_singleton_item()?;
-    let result = item.cast_as_string();
+    let result = item.get_as_raw_string();
     return Ok(new_singleton_string(&result));
+}
+
+// ---------------------------------------------------------------------
+// 2.4 fn:data
+// fn:data($arg as item()*) as xs:anyAtomicType*
+//
+fn fn_data(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    return Ok(args[0].atomize());
 }
 
 // ---------------------------------------------------------------------
@@ -276,6 +296,17 @@ fn fn_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 //        round
 //        round_half_to_even
 //
+// ---------------------------------------------------------------------
+// 6.4.1 fn:abs
+// fn:abs($arg as numeric?) as numeric?
+//
+fn fn_abs(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    return fn_numeric_unary(args,
+                |a| { a.abs() },
+                |a| { a.abs() },
+                |a| { a.abs() });
+}
+
 // ---------------------------------------------------------------------
 // 6.4.2 fn:ceiling
 // fn:ceiling($arg as numeric?) as numeric?
@@ -370,6 +401,56 @@ fn fn_numeric_unary<FINT, FDEC, FDBL>(args: &Vec<&XSequence>,
 // ---------------------------------------------------------------------
 // 7 Functions on Strings
 //
+// ---------------------------------------------------------------------
+// 7.2.1 fn:codepoints-to-string
+// fn:codepoints-to-string($arg as xs:integer*) as xs:string
+//
+pub fn fn_codepoints_to_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let mut v: Vec<u16> = vec!{};
+    for item in args[0].iter() {
+        let uni = item.get_as_raw_integer()? as u64;
+        if 0x10000 <= uni {                             // 代用対
+            let hi = (uni - 0x10000) / 0x0400 + 0xD800;
+            let lo = (uni - 0x10000) % 0x0400 + 0xDC00;
+            v.push(hi as u16);
+            v.push(lo as u16);
+        } else {
+            v.push(uni as u16);
+        }
+    }
+    match String::from_utf16(&v) {
+        Ok(s) => return Ok(new_singleton_string(&s)),
+        Err(_) => return Err(dynamic_error!("Code point not valid.")),
+    }
+}
+
+// ---------------------------------------------------------------------
+// 7.2.2 fn:string-to-codepoints
+// fn:string-to-codepoints($arg as xs:string?) as xs:integer*
+//
+pub fn fn_string_to_codepoints(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    }
+    let arg = args[0].get_singleton_string()?;
+    let arg_chars: Vec<char> = arg.chars().collect();
+    let mut result = new_xsequence();
+    for ch in arg_chars.iter() {
+        let mut b = [0; 2];
+        ch.encode_utf16(&mut b);
+
+        let hi = b[0] as u64;
+        let lo = b[1] as u64;
+        if 0xD800 <= hi && hi <= 0xDBFF && 0xDC00 <= lo && lo <= 0xDFFF {
+            let uni: u64 = 0x10000 + (hi - 0xD800) * 0x0400 + (lo - 0xDC00);
+            result.push(&new_xitem_integer(uni as i64));
+        } else {
+            result.push(&new_xitem_integer(hi as i64));
+        }
+    }
+
+    return Ok(result);
+}
 
 // ---------------------------------------------------------------------
 // 7.2 Functions to Assemble and Disassemble Strings
@@ -438,11 +519,28 @@ fn fn_concat(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     let mut val = String::new();
     for arg in args.iter() {
         if ! arg.is_empty() {
-            val += &arg.get_singleton_item()?.cast_as_string();
+            val += &arg.get_singleton_item()?.get_as_raw_string();
         }
     }
     return Ok(new_singleton_string(&val));
 }
+
+// ---------------------------------------------------------------------
+// 7.4.2 fn:string-join
+// fn:string-join($arg1 as xs:string*, $arg2 as xs:string) as xs:string
+//
+fn fn_string_join(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let separator = args[1].get_singleton_string()?;
+    let mut result = String::new();
+    for (i, s) in args[0].iter().enumerate() {
+        if i != 0 {
+            result += &separator;
+        }
+        result += &s.get_as_raw_string();
+    }
+    return Ok(new_singleton_string(&result));
+}
+
 
 // ---------------------------------------------------------------------
 // 7.4.3 fn:substring
@@ -466,42 +564,18 @@ fn fn_substring(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 
     let source_string = args[0].get_singleton_string()?;
     let sv: Vec<char> = source_string.chars().collect();
-    let sv_len = usize_to_i64(sv.len());
 
-    let starting_loc = args[1].get_singleton_item()?.cast_as_double()?;
-    if starting_loc.is_nan() || starting_loc.is_infinite() {
-        return Ok(new_singleton_string(&""));
-    }
-    let beg_pos = round_x(starting_loc) as i64;     // 有限値
-    let mut b = beg_pos - 1;
-    if b < 0 {
-        b = 0;
-    }
-    if sv.len() <= b as usize {
-        b = sv_len;
-    }
-    let mut e = i64::MAX;
-    if args.len() == 2 {
-        e = sv_len;
-    } else {
-        let length = args[2].get_singleton_item()?.cast_as_double()?;
-        if length.is_nan() || length.is_sign_negative() {
-            return Ok(new_singleton_string(&""));
-        }
-        let len_str = f64_to_i64(round_x(length));      // 非負値 (+∞を含む)
-        if len_str != i64::MAX {
-            e = beg_pos + len_str - 1;
-        }
-        if e < b {
-            e = b;
-        }
-        if sv.len() as i64 <= e {
-            e = sv_len;
-        }
-    }
+    let starting_loc = args[1].get_singleton_item()?.get_as_raw_double()?;
+    let length = if args.len() == 2 {
+            f64::INFINITY
+        } else {
+            args[2].get_singleton_item()?.get_as_raw_double()?
+        };
+    let (b, e) = subcollection_index_sub(sv.len(), starting_loc, length);
+
     let mut result = String::new();
     for i in b..e {
-        result.push(sv[i as usize]);
+        result.push(sv[i]);
     }
     return Ok(new_singleton_string(&result));
 }
@@ -539,6 +613,32 @@ fn fn_normalize_space(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
         result += t;
     }
     return Ok(new_singleton_string(&result));
+}
+
+// ---------------------------------------------------------------------
+// 7.4.7 fn:upper-case
+// fn:upper-case($arg as xs:string?) as xs:string
+//
+fn fn_upper_case(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_singleton_string(&""));
+    }
+
+    let arg = args[0].get_singleton_string()?;
+    return Ok(new_singleton_string(&arg.to_uppercase()));
+}
+
+// ---------------------------------------------------------------------
+// 7.4.8 fn:lower-case
+// fn:upper-case($arg as xs:string?) as xs:string
+//
+fn fn_lower_case(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_singleton_string(&""));
+    }
+
+    let arg = args[0].get_singleton_string()?;
+    return Ok(new_singleton_string(&arg.to_lowercase()));
 }
 
 // ---------------------------------------------------------------------
@@ -612,7 +712,7 @@ fn fn_contains(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.5.2 fn:start-with
+// 7.5.2 fn:starts-with
 // fn:start-with($arg1 as xs:string?, $arg2 as xs:string?) as xs:boolean
 // fn:start-with($arg1 as xs:string?,
 //               $arg2 as xs:string?,
@@ -630,6 +730,28 @@ fn fn_starts_with(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     }
 
     let b = (&arg1).starts_with(&arg2);
+    return Ok(new_singleton_boolean(b));
+}
+
+// ---------------------------------------------------------------------
+// 7.5.3 fn:ends-with
+// fn:start-with($arg1 as xs:string?, $arg2 as xs:string?) as xs:boolean
+// fn:start-with($arg1 as xs:string?,
+//               $arg2 as xs:string?,
+//               $collation as xs:string) as xs:boolean
+//
+fn fn_ends_with(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let mut arg1 = String::new();
+    if ! args[0].is_empty() {
+        arg1 = args[0].get_singleton_string()?;
+    }
+
+    let mut arg2 = String::new();
+    if ! args[1].is_empty() {
+        arg2 = args[1].get_singleton_string()?;
+    }
+
+    let b = (&arg1).ends_with(&arg2);
     return Ok(new_singleton_boolean(b));
 }
 
@@ -809,7 +931,7 @@ fn fn_number(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     }
     let mut result = 0.0;
     if let Ok(arg) = args[0].get_singleton_item() {
-        result = arg.cast_as_double()?;
+        result = arg.get_as_raw_double()?;
     }
     return Ok(new_singleton_double(result));
 }
@@ -841,6 +963,25 @@ fn fn_lang(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
+// 14.9 fn:root
+// fn:root() as node()
+// fn:root($arg as node()?) as node()?
+//
+fn fn_root(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    }
+
+    if let Ok(node) = args[0].get_singleton_node() {
+        let root = node.root();
+        return Ok(new_singleton_node(&root));
+    } else {
+        return Err(dynamic_error!("root(): Item is not a node"));
+    }
+
+}
+
+// ---------------------------------------------------------------------
 // 15 Functions and Operators on Sequences
 //
 
@@ -859,8 +1000,167 @@ fn fn_boolean(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
+// 15.1.3 fn:index-of
+// fn:index-of($seqParam as xs:anyAtomicType*,
+//             $srchParam as xs:anyAtomicType) as xs:integer*
+// fn:index-of($seqParam as xs:anyAtomicType*,
+//             $srchParam as xs:anyAtomicType,
+//             $collation as xs:string) as xs:integer*
+//
+fn fn_index_of(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let seq_param = args[0];
+    let srch_param = args[1];
+    let mut result = new_xsequence();
+    for (i, v) in seq_param.iter().enumerate() {
+        if value_compare_eq(&new_singleton(v), srch_param)?.get_singleton_boolean()? == true {
+            result.push(&new_xitem_integer(usize_to_i64(i + 1)));
+        }
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
+// 15.1.4 fn:empty
+// fn:empty($arg as item()*) as xs:boolean
+//
+fn fn_empty(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    return Ok(new_singleton_boolean(args[0].len() == 0));
+}
+
+// ---------------------------------------------------------------------
+// 15.1.5 fn:exists
+// fn:exists($arg as item()*) as xs:boolean
+//
+fn fn_exists(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    return Ok(new_singleton_boolean(args[0].len() != 0));
+}
+
+// ---------------------------------------------------------------------
+// 15.1.7 fn:insert-before
+// fn:insert-before($target as item()*,
+//                  $position as xs:integer,
+//                  $inserts as item()*) as item()*
+//
+fn fn_insert_before(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let target = args[0];
+    let mut position = args[1].get_singleton_integer()? - 1;
+    let inserts = args[2];
+    if position <= 0 {
+        position = 0;
+    }
+    if target.len() as i64 <= position {
+        position = target.len() as i64;
+    }
+    let position = position as usize;
+
+    let mut result = new_xsequence();
+    for i in 0 .. position {
+        result.push(target.get_item(i));
+    }
+    result.append(inserts);
+    for i in position .. target.len() {
+        result.push(target.get_item(i));
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
+// 15.1.8 fn:remove
+// fn:remove($target as item()*, $position as xs:integer) as item()*
+//
+fn fn_remove(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let target = args[0];
+    let position = args[1].get_singleton_integer()?;
+    let mut result = new_xsequence();
+    for n in 0 .. target.len() {
+        if n + 1 != position as usize {
+            result.push(target.get_item(n));
+        }
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
+// 15.1.9 fn:reverse
+// fn:reverse($arg as item()*) as item()*
+//
+fn fn_reverse(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let mut arg = args[0].clone();
+    arg.reverse();
+    return Ok(arg);
+}
+
+// ---------------------------------------------------------------------
+// 15.1.10 fn:subsequence
+// fn:subsequence($sourceSeq as item()*,
+//                $startingLoc as xs:double) as item()*
+// fn:subsequence($sourceSeq as item()*,
+//                $startingLoc as xs:double,
+//                $length as xs:double) as item()*
+//
+fn fn_subsequence(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+
+    if args[0].len() == 0 {
+        return Ok(new_xsequence());
+    }
+
+    let source_sequence = args[0];
+
+    let starting_loc = args[1].get_singleton_item()?.get_as_raw_double()?;
+    let length = if args.len() == 2 {
+            f64::INFINITY
+        } else {
+            args[2].get_singleton_item()?.get_as_raw_double()?
+        };
+    let (b, e) = subcollection_index_sub(
+                    source_sequence.len(), starting_loc, length);
+
+    let mut result = new_xsequence();
+    for i in b..e {
+        result.push(source_sequence.get_item(i));
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
 // 15.2 Functions That Test the Cardinality of Sequences
 //
+// ---------------------------------------------------------------------
+// 15.2.1 fn:zero-or-one
+// fn:zero-or-one($arg as item()*) as item()?
+//
+fn fn_zero_or_one(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].len() <= 1 {
+        return Ok(args[0].clone());
+    } else {
+        return Err(dynamic_error!("fn:zero-or-one called with a sequence containing more than one item."));
+    }
+}
+
+// ---------------------------------------------------------------------
+// 15.2.2 fn:one-or-more
+// fn:one-or-more($arg as item()*) as item()?
+//
+fn fn_one_or_more(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if 1 <= args[0].len() {
+        return Ok(args[0].clone());
+    } else {
+        return Err(dynamic_error!("fn:one-or-more called with a sequence containing no items."));
+    }
+}
+
+// ---------------------------------------------------------------------
+// 15.2.3 fn:exactly-one
+// fn:exactly-one($arg as item()*) as item()?
+//
+fn fn_exactly_one(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].len() == 1 {
+        return Ok(args[0].clone());
+    } else {
+        return Err(dynamic_error!("fn:exactly-one called with a sequence containing zero or more than one item."));
+    }
+}
+
 // ---------------------------------------------------------------------
 // 15.4 Aggregate Functions
 //          count
@@ -878,13 +1178,77 @@ fn fn_count(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
+// 15.4.2 fn:avg
+// fn:avg($arg as xs:anyAtomicType*) as xs:anyAtomicType?
+//
+// $argが空シーケンスならば空シーケンスを返す。
+// // 加算 (cf. fn:sum) して個数 (cf. fn:count) で除するが、
+// // 加算でオーバーフローが生じないようにすること!
+//
+fn fn_avg(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    }
+
+    let sum = fn_sum(args)?;
+    let divider = new_xitem_integer(usize_to_i64(args[0].len()));
+    let avg = xitem_numeric_divide(&sum.get_item(0), &divider)?;
+
+    return Ok(new_singleton(&avg));
+}
+
+// ---------------------------------------------------------------------
+// 15.4.3 fn:max
+// fn:max($arg as xs:anyAtomicType*) as xs:anyAtomicType?
+// fn:max($arg as xs:anyAtomicType*, $collation as string) as xs:anyAtomicType?
+//
+fn fn_max(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    }
+
+    let mut max_item = args[0].get_item(0).clone();
+    for item in args[0].iter() {
+        let b = value_compare_lt(&new_singleton(&max_item), &new_singleton(item))?;
+        if b.effective_boolean_value()? == true {
+            max_item = item.clone();
+        }
+    }
+
+    return Ok(new_singleton(&max_item));
+}
+
+// ---------------------------------------------------------------------
+// 15.4.4 fn:min
+// fn:min($arg as xs:anyAtomicType*) as xs:anyAtomicType?
+// fn:min($arg as xs:anyAtomicType*, $collation as string) as xs:anyAtomicType?
+//
+fn fn_min(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    }
+
+    let mut max_item = args[0].get_item(0).clone();
+    for item in args[0].iter() {
+        let b = value_compare_gt(&new_singleton(&max_item), &new_singleton(item))?;
+        if b.effective_boolean_value()? == true {
+            max_item = item.clone();
+        }
+    }
+
+    return Ok(new_singleton(&max_item));
+}
+
+// ---------------------------------------------------------------------
 // 15.4.5 fn:sum
 // fn:sum($arg as xs:anyAtomicType*) as xs:anyAtomicType
 // fn:sum($arg as xs:anyAtomicType*,
 //        $zero as xs:anyAtomicType?) as xs:anyAtomicType?
 //
+// $argが空シーケンスのとき: $zeroがあれば$zero、なければ整数0を返す。
+//
 fn fn_sum(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
-    if args[0].len() == 0 {
+    if args[0].is_empty() {
         if args.len() <= 1 {
             return Ok(new_singleton_integer(0));
         } else {
@@ -893,8 +1257,13 @@ fn fn_sum(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     }
 
     let mut val = new_xitem_integer(0);
-    for i in 0 .. args[0].len() {
-        val = xitem_numeric_add(&val, args[0].get_item(i))?;
+    for n in args[0].iter() {
+        if n.is_numeric() {
+            val = xitem_numeric_add(&val, &n)?;
+        } else {
+            let n_double = n.cast_as("double")?;
+            val = xitem_numeric_add(&val, &n_double)?;
+        }
                         // 必要に応じて型の昇格をしながら加算していく。
     }
     return Ok(new_singleton(&val));
@@ -926,14 +1295,68 @@ fn fn_last(_args: &Vec<&XSequence>, eval_env: &EvalEnv) -> Result<XSequence, Box
 //
 
 // =====================================================================
+// 補助函数
+//
+// ---------------------------------------------------------------------
+// ある長さの順序つき集合 (C; 文字列、シーケンスなど) の部分集合を
+// 取得するために、開始位置 b と終了位置 e を求める。
+// s (starting_loc、1起点の値) と l (length) はf64型で、NaNやInfにもなりうる。
+// Cの要素 (番号 i := [b, e)、0起点の値) から成る部分集合を
+// 取得すればよいよう、bとe (usize型) を求めて返す。
+// 空集合を取得するべき場合は、b = 0、e = 0 を返す。
+//
+//                  7.4.3 fn:substring
+//                  15.1.10 fn:subsequence
+//
+fn subcollection_index_sub(source_length: usize,
+                           starting_loc: f64, length: f64) -> (usize, usize) {
+
+    if starting_loc.is_nan() || starting_loc.is_infinite() {
+        return (0, 0);
+    }
+    let beg_pos = round_x(starting_loc) as i64;     // 有限値
+    let mut b = beg_pos - 1;                        // 0起点の値に補正
+    if b < 0 {
+        b = 0;
+    }
+    if source_length as i64 <= b {
+        b = source_length as i64;
+    }
+
+    let mut e: i64;
+    if length.is_infinite() && length.is_sign_positive() {
+        e = source_length as i64;
+    } else {
+        if length.is_nan() || length.is_sign_negative() {
+            return (0, 0);
+        }
+        let len_str = if length.is_infinite() {
+                source_length as i64
+            } else {
+                round_x(length) as i64                 // 非負の有限値
+            };
+        e = beg_pos + len_str - 1;
+        if e < b {
+            e = b;
+        }
+        if source_length as i64 <= e {
+            e = source_length as i64;
+        }
+    }
+
+    return (b as usize, e as usize);
+
+}
+
+// =====================================================================
 //
 #[cfg(test)]
 mod test {
 //    use super::*;
 
-    use xpath2::helpers::compress_spaces;
-    use xpath2::helpers::subtest_xpath;
-    use xpath2::helpers::subtest_eval_xpath;
+    use xpath_impl::helpers::compress_spaces;
+    use xpath_impl::helpers::subtest_xpath;
+    use xpath_impl::helpers::subtest_eval_xpath;
 
     // -----------------------------------------------------------------
     // 2.3 fn:string
@@ -953,6 +1376,38 @@ mod test {
             ( r#"string(.)"#, r#"("string value")"# ),
             ( r#"string(/a)"#, r#"("string value")"# ),
             ( r#"string(/a/empty)"#, r#"("")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 2.4 fn:data
+    //
+    #[test]
+    fn test_fn_data() {
+        let xml = compress_spaces(r#"
+<a base="base">
+    Data
+</a>
+        "#);
+        subtest_eval_xpath("fn_data", &xml, &[
+            ( r#"data((/a, 37))"#, r#"("Data", 37)"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 6.4.1 fn:abs
+    //
+    #[test]
+    fn test_fn_abs() {
+        let xml = compress_spaces(r#"
+<a base="base">
+</a>
+        "#);
+        subtest_eval_xpath("fn_abs", &xml, &[
+            ( "abs(10.5)", "(10.5)" ),
+            ( "abs(-10.5)", "(10.5)" ),
+            ( "abs(-0e0)", "(0e0)" ),
+            ( "abs(-1 div 0e0)", "(+Infinity)" ),
         ]);
     }
 
@@ -1013,6 +1468,37 @@ mod test {
     }
 
     // -----------------------------------------------------------------
+    // 7.2.1 fn:codepoints-to-string
+    //
+    #[test]
+    fn test_fn_codepoints_to_string() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_codepoints_to_string", &xml, &[
+            ( r#"codepoints-to-string((84, 104, 233, 114, 232, 115, 101))"#, r#"("Thérèse")"# ),
+            ( r#"codepoints-to-string((131072, 131073, 131074))"#, r#"("𠀀𠀁𠀂")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 7.2.2 fn:string-to-codepoints
+    //
+    #[test]
+    fn test_fn_string_to_codepoints() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_string_to_codepoints", &xml, &[
+            ( r#"string-to-codepoints("Thérèse")"#, r#"(84, 104, 233, 114, 232, 115, 101)"# ),
+            ( r#"string-to-codepoints("𠀀𠀁𠀂")"#, r#"(131072, 131073, 131074)"# ),
+                                            // 0x20000 = 131072
+        ]);
+    }
+
+    // -----------------------------------------------------------------
     // 7.3.2 fn:compare
     //
     #[test]
@@ -1042,6 +1528,25 @@ mod test {
             ( r#"concat(123, 456, 789)"#, r#"("123456789")"# ),
             ( r#"concat((), "A", ())"#, r#"("A")"# ),
             ( r#"concat((), (), ())"#, r#"("")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 7.4.2 fn:string-join
+    //
+    #[test]
+    fn test_fn_string_join() {
+        let xml = compress_spaces(r#"
+<doc>
+    <chap>
+        <section base="base">
+        </section>
+    </chap>
+</doc>
+        "#);
+        subtest_eval_xpath("fn_string_join", &xml, &[
+            ( r#"string-join(('A', 'B', 'C'), 'x')"#, r#"("AxBxC")"# ),
+            ( r#"string-join(for $n in ancestor-or-self::* return name($n), '/')"#, r#"("doc/chap/section")"# ),
         ]);
     }
 
@@ -1105,6 +1610,36 @@ mod test {
     }
 
     // -----------------------------------------------------------------
+    // 7.4.7 fn:upper-case
+    //
+    #[test]
+    fn test_fn_upper_case() {
+        let xml = compress_spaces(r#"
+<a base="base">
+</a>
+        "#);
+        subtest_eval_xpath("fn_upper_case", &xml, &[
+            ( r#"upper-case('AbCdE')"#, r#"("ABCDE")"# ),
+            ( r#"upper-case('ΣЯσя')"#, r#"("ΣЯΣЯ")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 7.4.8 fn:lower-case
+    //
+    #[test]
+    fn test_fn_lower_case() {
+        let xml = compress_spaces(r#"
+<a base="base">
+</a>
+        "#);
+        subtest_eval_xpath("fn_lower_case", &xml, &[
+            ( r#"lower-case('AbCdE')"#, r#"("abcde")"# ),
+            ( r#"lower-case('ΣЯσя')"#, r#"("σяσя")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
     // 7.4.9 fn:translate
     //
     #[test]
@@ -1152,6 +1687,24 @@ mod test {
             ( r#"starts-with("", "たち")"#, "(false)" ),
             ( r#"starts-with("かきくけこ", "")"#, "(true)" ),
             ( r#"starts-with("", "")"#, "(true)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 7.5.3 fn:ends-with
+    //
+    #[test]
+    fn test_fn_ends_with() {
+        let xml = compress_spaces(r#"
+<a base="base">
+</a>
+        "#);
+        subtest_eval_xpath("fn_ends_with", &xml, &[
+            ( r#"ends-with("かきくけこ", "けこ")"#, "(true)" ),
+            ( r#"ends-with("かきくけこ", "てと")"#, "(false)" ),
+            ( r#"ends-with("", "てと")"#, "(false)" ),
+            ( r#"ends-with("かきくけこ", "")"#, "(true)" ),
+            ( r#"ends-with("", "")"#, "(true)" ),
         ]);
     }
 
@@ -1271,6 +1824,238 @@ mod test {
     }
 
     // -----------------------------------------------------------------
+    // 14.9 fn:root
+    //
+    #[test]
+    fn test_fn_root() {
+        let xml = compress_spaces(r#"
+<?xml version='1.0' encoding='UTF-8'?>
+<root>
+    <para base="base"/>
+</root>
+        "#);
+        subtest_eval_xpath("fn_root", &xml, &[
+            ( "root()", "((DocumentRoot))" ),
+            ( "root(/root/para)", "((DocumentRoot))" ),
+            ( "root(/root/empty)", "()" ),
+            ( "root(45)", "Dynamic Error" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.3 fn:index-of
+    //
+    #[test]
+    fn test_fn_index_of() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_index_of", &xml, &[
+            ( "index-of((10, 20, 30, 40), 25)", "()" ),
+            ( "index-of((10, 20, 30, 30, 20, 10), 20)", "(2, 5)" ),
+            ( "index-of(('a', 'sport', 'and', 'a', 'pastime'), 'a')", "(1, 4)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.4 fn:empty
+    //
+    #[test]
+    fn test_fn_empty() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_empty", &xml, &[
+            ( "empty(())", "(true)" ),
+            ( r#"empty(("ABC"))"#, "(false)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.5 fn:exists
+    //
+    #[test]
+    fn test_fn_exists() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_exists", &xml, &[
+            ( "exists(())", "(false)" ),
+            ( r#"exists(("ABC"))"#, "(true)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.7 fn:insert-before
+    //
+    #[test]
+    fn test_fn_insert_before() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_insert_before", &xml, &[
+            ( "insert-before((1, 2, 3), 0, 99)", "(99, 1, 2, 3)" ),
+            ( "insert-before((1, 2, 3), 1, 99)", "(99, 1, 2, 3)" ),
+            ( "insert-before((1, 2, 3), 2, 99)", "(1, 99, 2, 3)" ),
+            ( "insert-before((1, 2, 3), 3, 99)", "(1, 2, 99, 3)" ),
+            ( "insert-before((1, 2, 3), 4, 99)", "(1, 2, 3, 99)" ),
+            ( "insert-before((1, 2, 3), 2, (98, 99))", "(1, 98, 99, 2, 3)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.8 fn:remove
+    //
+    #[test]
+    fn test_fn_remove() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_remove", &xml, &[
+            ( r#"remove(("A", "B", "C"), 0)"#, r#"("A", "B", "C")"# ),
+            ( r#"remove(("A", "B", "C"), 2)"#, r#"("A", "C")"# ),
+            ( r#"remove((), 3)"#, r#"()"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.9 fn:reverse
+    //
+    #[test]
+    fn test_fn_reverse() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_reverse", &xml, &[
+            ( r#"reverse(("A", "B", "C"))"#, r#"("C", "B", "A")"# ),
+            ( r#"reverse(())"#, r#"()"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.1.10 fn:subsequence
+    //
+    #[test]
+    fn test_fn_subsequence() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_subsequence", &xml, &[
+            ( "subsequence((), 2, 2)", "()" ),
+            ( "subsequence((1, 2, 3, 4), 2)", "(2, 3, 4)" ),
+            ( "subsequence((1, 2, 3, 4), 2, 2)", "(2, 3)" ),
+            ( "subsequence((1, 2, 3, 4), -2, 5)", "(1, 2)" ),
+            ( "subsequence((1, 2, 3, 4), -42, 1 div 0e0)", "(1, 2, 3, 4)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.2.1 fn:zero-or-one
+    //
+    #[test]
+    fn test_fn_zero_or_one() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_zero_or_one", &xml, &[
+            ( "zero-or-one(())", "()" ),
+            ( "zero-or-one((5))", "(5)" ),
+            ( "zero-or-one((5, 8))", "Dynamic Error" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.2.2 fn:one-or-more
+    //
+    #[test]
+    fn test_fn_one_or_more() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_one_or_more", &xml, &[
+            ( "one-or-more(())", "Dynamic Error" ),
+            ( "one-or-more((5))", "(5)" ),
+            ( "one-or-more((5, 8))", "(5, 8)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.2.3 fn:exactly-one
+    //
+    #[test]
+    fn test_fn_exactly_one() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_exactly_one", &xml, &[
+            ( "exactly-one(())", "Dynamic Error" ),
+            ( "exactly-one((5))", "(5)" ),
+            ( "exactly-one((5, 8))", "Dynamic Error" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.4.2 fn:avg
+    //
+    #[test]
+    fn test_fn_avg() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_avg", &xml, &[
+            ( "avg(())", "()" ),
+            ( "avg((3, 4, 5))", "(4.0)" ),
+            ( "avg((1e0 div 0e0, 1e0 div 0e0))", "(+Infinity)" ),
+            ( "avg((1e0 div 0e0, -1e0 div 0e0))", "(NaN)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.4.3 fn:max
+    //
+    #[test]
+    fn test_fn_max() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_max", &xml, &[
+            ( "max(())", "()" ),
+            ( "max((3, 4, 5))", "(5)" ),
+            ( r#"max(("a", "b", "c"))"#, r#"("c")"# ),
+            ( r#"max((3, 4, "zero"))"#, "Type Error" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 15.4.4 fn:min
+    //
+    #[test]
+    fn test_fn_min() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_min", &xml, &[
+            ( "min(())", "()" ),
+            ( "min((3, 4, 5))", "(3)" ),
+            ( r#"min(("a", "b", "c"))"#, r#"("a")"# ),
+            ( r#"min((3, 4, "zero"))"#, "Type Error" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
     // 15.4.5 fn:sum
     //
     #[test]
@@ -1284,6 +2069,8 @@ mod test {
             ( "sum((1.5, 2.5, 3))", "(7.0)" ),
             ( "sum((1, 2, 3), (99))", "(6)" ),
             ( "sum(())", "(0)" ),
+            ( "sum((), (99))", "(99)" ),
+            ( r#"sum(("1", "2", "3"))"#, "(6e0)" ),
         ]);
     }
 

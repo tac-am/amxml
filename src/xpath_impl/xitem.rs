@@ -1,5 +1,5 @@
 //
-// xpath2/xitem.rs
+// xpath_impl/xitem.rs
 //
 // amxml: XML processor with XPath.
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
@@ -304,6 +304,15 @@ impl fmt::Display for XItem {
 //
 impl XItem {
     // -----------------------------------------------------------------
+    //
+    pub fn as_nodeptr(&self) -> Option<NodePtr> {
+        match self {
+            XItem::XINode{value} => return Some(value.rc_clone()),
+            _ => return None,
+        }
+    }
+
+    // -----------------------------------------------------------------
     // 原子化
     // 型註釈がないとすれば、XINodeを原子化した結果は常にXIStringである。
     //
@@ -320,6 +329,17 @@ impl XItem {
                 }
             },
             _ => return self.clone(),
+        }
+    }
+
+    // -----------------------------------------------------------------
+    //
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            XItem::XIInteger{value: _} => return true,
+            XItem::XIDecimal{value: _} => return true,
+            XItem::XIDouble{value: _} => return true,
+            _ => return false,
         }
     }
 
@@ -341,25 +361,25 @@ impl XItem {
     pub fn cast_as(&self, type_name: &str) -> Result<XItem, Box<Error>> {
         match type_name {
             "string" => {
-                return Ok(new_xitem_string(&self.cast_as_string()));
+                return Ok(new_xitem_string(&self.get_as_raw_string()));
             },
             "double" => {
-                if let Ok(d) = self.cast_as_double() {
+                if let Ok(d) = self.get_as_raw_double() {
                     return Ok(new_xitem_double(d));
                 }
             },
             "decimal" => {
-                if let Ok(d) = self.cast_as_decimal() {
+                if let Ok(d) = self.get_as_raw_decimal() {
                     return Ok(new_xitem_decimal(d));
                 }
             },
             "integer" => {
-                if let Ok(i) = self.cast_as_integer() {
+                if let Ok(i) = self.get_as_raw_integer() {
                     return Ok(new_xitem_integer(i));
                 }
             },
             "boolean" => {
-                if let Ok(b) = self.cast_as_boolean() {
+                if let Ok(b) = self.get_as_raw_boolean() {
                     return Ok(new_xitem_boolean(b));
                 }
             },
@@ -371,7 +391,7 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
-    pub fn cast_as_string(&self) -> String {
+    pub fn get_as_raw_string(&self) -> String {
         match self {
             XItem::XINode{value} => return value.string_value(),
             XItem::XIString{value} => return value.clone(),
@@ -402,7 +422,7 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
-    pub fn cast_as_double(&self) -> Result<f64, Box<Error>> {
+    pub fn get_as_raw_double(&self) -> Result<f64, Box<Error>> {
         match self {
             XItem::XINode{value} => {
                 return Ok(atof(&value.string_value()));
@@ -427,7 +447,7 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
-    pub fn cast_as_decimal(&self) -> Result<f64, Box<Error>> {
+    pub fn get_as_raw_decimal(&self) -> Result<f64, Box<Error>> {
         match self {
             XItem::XINode{value} => {
                 return Ok(atof(&value.string_value()));
@@ -452,7 +472,7 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
-    pub fn cast_as_integer(&self) -> Result<i64, Box<Error>> {
+    pub fn get_as_raw_integer(&self) -> Result<i64, Box<Error>> {
         match self {
             XItem::XINode{value} => {
                 return Ok(atoi(&value.string_value()));
@@ -477,7 +497,7 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
-    pub fn cast_as_boolean(&self) -> Result<bool, Box<Error>> {
+    pub fn get_as_raw_boolean(&self) -> Result<bool, Box<Error>> {
         match self {
             XItem::XINode{value} => {
                 match value.string_value().as_str() {

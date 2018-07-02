@@ -1,5 +1,5 @@
 //
-// xpath2/oper.rs
+// xpath_impl/oper.rs
 //
 // amxml: XML processor with XPath.
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
@@ -9,9 +9,9 @@ use std::cmp::Ordering;
 use std::error::Error;
 
 use dom::*;
-use xpath2::eval::*;
-use xpath2::xitem::*;
-use xpath2::xsequence::*;
+use xpath_impl::eval::*;
+use xpath_impl::xitem::*;
+use xpath_impl::xsequence::*;
 
 // ---------------------------------------------------------------------
 // 6.2 Operators on Numeric Values
@@ -162,6 +162,17 @@ fn op_node_compare(args: &Vec<XSequence>, eval_env: &EvalEnv,
 // 15 Functions and Operators on Sequences
 //
 // ---------------------------------------------------------------------
+// 15.1.2 op:concatenate
+// op:concatenate($seq1 as item()*, $seq2 as item()*) as item()*
+//
+pub fn op_concatenate(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
+    let mut result = new_xsequence();
+    result.append(&args[0]);
+    result.append(&args[1]);
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
 // 15.3 Equals, Union, Intersection and Except
 //
 pub fn op_union(args: &Vec<XSequence>, eval_env: &EvalEnv) -> Result<XSequence, Box<Error>> {
@@ -225,9 +236,9 @@ pub fn op_to(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
 mod test {
 //    use super::*;
 
-    use xpath2::helpers::compress_spaces;
-    use xpath2::helpers::subtest_xpath;
-    use xpath2::helpers::subtest_eval_xpath;
+    use xpath_impl::helpers::compress_spaces;
+    use xpath_impl::helpers::subtest_xpath;
+    use xpath_impl::helpers::subtest_eval_xpath;
 
     // -----------------------------------------------------------------
     // 6.2 Operators on Numeric Values

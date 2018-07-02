@@ -1,5 +1,5 @@
 //
-// xpath2/xsequence.rs
+// xpath_impl/xsequence.rs
 //
 // amxml: XML processor with XPath.
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
@@ -7,12 +7,13 @@
 
 use std::error::Error;
 use std::fmt;
+use std::slice::Iter;
 
 use dom::*;
 use xmlerror::*;
-use xpath2::xitem::*;
-use xpath2::func::*;
-use xpath2::oper::*;
+use xpath_impl::xitem::*;
+use xpath_impl::func::*;
+use xpath_impl::oper::*;
 
 // =====================================================================
 // A [sequence] is an ordered collection of zero or more items.
@@ -142,7 +143,7 @@ impl XSequence {
     }
 
     // -----------------------------------------------------------------
-    // シングルトンかつブーリアンであれば、その整数を返す。
+    // シングルトンかつブーリアンであれば、そのブール値を返す。
     //
     pub fn get_singleton_boolean(&self) -> Result<bool, Box<Error>> {
         let item = self.get_singleton_item()?;
@@ -190,7 +191,7 @@ impl XSequence {
     // -----------------------------------------------------------------
     // 原子化
     //
-    fn atomize(&self) -> XSequence {
+    pub fn atomize(&self) -> XSequence {
         let mut seq = new_xsequence();
         for v in self.value.iter() {
             seq.push(&v.atomize());
@@ -218,6 +219,12 @@ impl XSequence {
 
     // -----------------------------------------------------------------
     //
+    pub fn iter(&self) -> Iter<XItem> {
+        return self.value.iter();
+    }
+
+    // -----------------------------------------------------------------
+    //
     pub fn get_item(&self, pos: usize) -> &XItem {
         return &self.value[pos];
     }
@@ -234,6 +241,12 @@ impl XSequence {
         for item in other.value.iter() {
             self.value.push(item.clone());
         }
+    }
+
+    // -----------------------------------------------------------------
+    //
+    pub fn reverse(&mut self) {
+        self.value.reverse();
     }
 
     // -----------------------------------------------------------------
@@ -427,10 +440,8 @@ fn general_comparison<FNUM, FSTR, FBOOL>(lhs: &XSequence, rhs: &XSequence,
           FSTR: FnMut(i64) -> bool,
           FBOOL: FnMut(&XItem, &XItem) -> Result<bool, Box<Error>> {
 
-    for i in 0 .. lhs.len() {
-        let xitem_lhs = lhs.get_item(i).atomize();
-        for j in 0 .. rhs.len() {
-            let xitem_rhs = rhs.get_item(j).atomize();
+    for xitem_lhs in lhs.atomize().iter() {
+        for xitem_rhs in rhs.atomize().iter() {
             if let Ok(b) = num_op(&xitem_lhs, &xitem_rhs) {
                 if b == true {
                     return Ok(new_singleton_boolean(true));
@@ -459,9 +470,9 @@ fn general_comparison<FNUM, FSTR, FBOOL>(lhs: &XSequence, rhs: &XSequence,
 mod test {
 //    use super::*;
 
-    use xpath2::helpers::compress_spaces;
-    use xpath2::helpers::subtest_xpath;
-    use xpath2::helpers::subtest_eval_xpath;
+    use xpath_impl::helpers::compress_spaces;
+    use xpath_impl::helpers::subtest_xpath;
+    use xpath_impl::helpers::subtest_eval_xpath;
 
     // -----------------------------------------------------------------
     // 6.3 Comparison Operators on Numeric Values

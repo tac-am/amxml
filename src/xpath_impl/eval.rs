@@ -1,5 +1,5 @@
 //
-// xpath2/eval.rs
+// xpath_impl/eval.rs
 //
 // amxml: XML processor with XPath.
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
@@ -16,11 +16,11 @@ use std::usize;
 
 use dom::*;
 use xmlerror::*;
-use xpath2::parser::*;
-use xpath2::xitem::*;
-use xpath2::xsequence::*;
-use xpath2::func::*;
-use xpath2::oper::*;
+use xpath_impl::parser::*;
+use xpath_impl::xitem::*;
+use xpath_impl::xsequence::*;
+use xpath_impl::func::*;
+use xpath_impl::oper::*;
 
 // =====================================================================
 //
@@ -209,12 +209,11 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
     match xnode_type {
         XNodeType::OperatorPath => {
             let left_xnode = get_left(xnode);
-            let lhs: XSequence;
-            if ! is_nil_xnode(&left_xnode) {
-                lhs = evaluate_xnode(xseq, &left_xnode, eval_env)?;
+            let lhs = if ! is_nil_xnode(&left_xnode) {
+                evaluate_xnode(xseq, &left_xnode, eval_env)?
             } else {
-                lhs = new_xsequence();
-            }
+                new_xsequence()
+            };
             let right_xnode = get_right(xnode);
             if ! is_nil_xnode(&right_xnode) {
                 return evaluate_xnode(&lhs, &right_xnode, eval_env);
@@ -239,25 +238,31 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
             return match_location_path(xseq, xnode, eval_env);
         },
 
+        XNodeType::ContextItem => {
+            println!("ContextItem => xseq = {}", xseq.to_string());
+            return Ok(xseq.clone());
+        }
+
         XNodeType::ApplyPredicates => {
-            // left値 (ノード集合) に対し、rightの述語を適用して絞り込む。
+            // leftを評価して得られるシーケンスに対し、rightの述語を
+            // 適用してしぼり込む。
             //
             let lhs = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
             let rhs = get_right(xnode);
             if ! is_nil_xnode(&rhs) {
-                let node_array = filter_by_predicates(lhs.to_nodeset().to_vec(), &rhs, eval_env)?;
-                return Ok(new_xsequence_from_node_array(&node_array));
+                let filtered_xseq = filter_by_predicates(&lhs, &rhs, eval_env)?;
+                return Ok(filtered_xseq);
+            } else {
+                return Ok(lhs);
             }
-            return Ok(lhs);
         },
 
-        XNodeType::OperatorComma => {
+        XNodeType::OperatorConcatenate => {
             // シーケンスを連結する。
             //
-            let mut lhs = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
+            let lhs = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
             let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
-            lhs.append(&rhs);
-            return Ok(lhs);
+            return op_concatenate(&vec!{lhs, rhs});
         },
 
         XNodeType::OperatorOr => {
@@ -464,8 +469,8 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
             let var_name = get_xnode_name(&xnode);
             let range = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
             let mut result = new_xsequence();
-            for i in 0 .. range.len() {
-                eval_env.set_var(var_name.as_str(), range.get_item(i));
+            for xitem in range.iter() {
+                eval_env.set_var(var_name.as_str(), xitem);
                 let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
                 result.append(&rhs);
                 eval_env.remove_var(var_name.as_str());
@@ -480,8 +485,9 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         XNodeType::SomeVarBind => {
             let var_name = get_xnode_name(&xnode);
             let range = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
-            for i in 0 .. range.len() {
-                eval_env.set_var(var_name.as_str(), range.get_item(i));
+
+            for xitem in range.iter() {
+                eval_env.set_var(var_name.as_str(), xitem);
                 let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
                 if rhs.effective_boolean_value()? == true {
                     return Ok(new_singleton_boolean(true));
@@ -498,8 +504,8 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         XNodeType::EveryVarBind => {
             let var_name = get_xnode_name(&xnode);
             let range = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
-            for i in 0 .. range.len() {
-                eval_env.set_var(var_name.as_str(), range.get_item(i));
+            for xitem in range.iter() {
+                eval_env.set_var(var_name.as_str(), xitem);
                 let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
                 if rhs.effective_boolean_value()? == false {
                     return Ok(new_singleton_boolean(false));
@@ -510,14 +516,18 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         },
 
         XNodeType::OperatorCastableAs => {
-            let type_name = get_xnode_name(&xnode);
             let value = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
+            let single_type_xnode = get_right(xnode);
+            let atomic_type_xnode = get_left(&single_type_xnode);
+            let type_name = get_xnode_name(&atomic_type_xnode);
             return Ok(new_singleton_boolean(value.castable_as(&type_name)));
         }
 
         XNodeType::OperatorCastAs => {
-            let type_name = get_xnode_name(&xnode);
             let value = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
+            let single_type_xnode = get_right(xnode);
+            let atomic_type_xnode = get_left(&single_type_xnode);
+            let type_name = get_xnode_name(&atomic_type_xnode);
             return value.cast_as(&type_name);
         }
 
@@ -536,7 +546,7 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
                         args_array.push(arg);
                     },
                     _ => {
-                        return Err(cant_occur!("evaluate_xnode(FunctionCall)"));
+                        return Err(cant_occur!("FunctionCall: rightがArgumentTopでない。"));
                     },
                 }
                 curr_xnode = get_right(&curr_xnode);
@@ -583,12 +593,13 @@ fn match_location_path(xseq: &XSequence, xnode: &XNodePtr,
                 eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
     let mut new_node_array: Vec<NodePtr> = vec!{};
     for node in xseq.to_nodeset().iter() {
-        let mut match_node_array = match_loc_step(node, xnode, eval_env)?;
-        new_node_array.append(&mut match_node_array);
+        let mut matched_xseq = match_loc_step(node, xnode, eval_env)?;
+        new_node_array.append(&mut matched_xseq.to_nodeset());
     }
 
     // -------------------------------------------------------------
-    // 得られたノード集合を文書順に整列する。
+    // 得られたノード集合を文書順に整列し、重複を除去する。
+    // // 「!」演算子 (XPath-3.0) の場合は整列しない。
     //
     eval_env.sort_by_doc_order(&mut new_node_array);
     let result = new_xsequence_from_node_array(&new_node_array);
@@ -598,9 +609,10 @@ fn match_location_path(xseq: &XSequence, xnode: &XNodePtr,
 // ---------------------------------------------------------------------
 // XML木のあるノードを起点として、
 // xNodeで示されるLocStep (例: 「child::foo[@attr='at']」) に、
-// 軸、ノード・テスト、述語が合致するノード集合を返す。
+// 軸、ノード・テスト、述語が合致するノード集合をXSequenceの形で返す。
 //
-fn match_loc_step(node: &NodePtr, xnode: &XNodePtr, eval_env: &mut EvalEnv) -> Result<Vec<NodePtr>, Box<Error>> {
+fn match_loc_step(node: &NodePtr, xnode: &XNodePtr,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     let mut node_array: Vec<NodePtr> = vec!{};
 
@@ -671,10 +683,12 @@ fn match_loc_step(node: &NodePtr, xnode: &XNodePtr, eval_env: &mut EvalEnv) -> R
     // 述語によって絞り込む。
     let rhs = get_right(&xnode);
     if ! is_nil_xnode(&rhs) {
-        node_array = filter_by_predicates(node_array, &rhs, eval_env)?;
+        let result = filter_by_predicates(
+                &new_xsequence_from_node_array(&node_array), &rhs, eval_env)?;
+        return Ok(result);
+    } else {
+        return Ok(new_xsequence_from_node_array(&node_array));
     }
-
-    return Ok(node_array);
 }
 
 // ---------------------------------------------------------------------
@@ -823,100 +837,75 @@ fn array_preceding_sibling(node: &NodePtr) -> Vec<NodePtr> {
 }
 
 // ---------------------------------------------------------------------
-// ノード・テスト。
-// [54] KindTest ::= DocumentTest                                   // ☆
-//                 | ElementTest                                    // *
-//                 | AttributeTest                                  // *
-//                 | SchemaElementTest                              // ☆
-//                 | SchemaAttributeTest                            // ☆
-//                 | PITest
-//                 | CommentTest
-//                 | TextTest
-//                 | AnyKindTest
-//
-// * 引数にTypeNameが入っている場合については未実装
+// ノード・テスト (名前テストまたは種類テスト)。
 //
 fn match_node_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
 
-    let node_type = node.node_type();
-    let xnode_name = get_xnode_name(&xnode);
-
-    // -------------------------------------------------------------
-    // NodeTypeにもとづく判定 (1)
+    // xnode: AxisNNNN;
+    // get_left(&xnode) がXNodeType::KindTestのとき:
+    //     そのget_xnode_name(&xnode): KindTestで照合する規則
+    // get_left(&xnode) がNilのとき:
+    //     get_xnode_name(&xnode): NameTestで照合する名前
     //
-    match xnode_name.as_str() {
-        "element()" | "element(*)" => {
-            return node_type == NodeType::Element;
-        },
-        "attribute()" | "attribute(*)" => {
-            return node_type == NodeType::Attribute;
-        },
-        "comment()" => {
-            return node_type == NodeType::Comment;
-        },
-        "text()" => {
-            return node_type == NodeType::Text;
-        },
-        "processing-instruction()" => {
-            return node_type == NodeType::Instruction;
-        },
-        "node()" => {
-            return true;
-        },
-        _ => {},
+    let kind_test_xnode = get_left(&xnode);
+    if is_nil_xnode(&kind_test_xnode) {
+        return match_name_test(node, xnode);
+    } else {
+        return match_kind_test(node, &kind_test_xnode);
     }
+}
+
+// ---------------------------------------------------------------------
+// ノードの名前テスト。
+//
+fn match_name_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
+
+    let name_test_pattern = get_xnode_name(&xnode);
+        // ノード名と照合するパターン。
+        // 例えば「child::para」というステップの「para」。
 
     // -------------------------------------------------------------
-    // NodeTypeにもとづく判定 (2) processing-instruction('style-sheet')
+    // 省略記法「//」は「/descendant-or-self::node()/」、
+    // 「..」は「parent::node()」の意味であるが、
+    // 便宜上、NameTestの形式とし、「node()」を設定してある。
+    // (XNodeType::KindTestのノードを作るよりも処理が簡単)
     //
-    if node_type == NodeType::Element {
-        if xnode_name == format!("element({})", node.name()) {
-            return true;
-        }
-    }
-    if node_type == NodeType::Attribute {
-        if xnode_name == format!("attribute({})", node.name()) {
-            return true;
-        }
-    }
-    if node_type == NodeType::Instruction {
-        if xnode_name == format!("processing-instruction({})", node.name()) {
-            return true;
-        }
+    if name_test_pattern.as_str() == "node()" {
+        return true;
     }
 
     // -------------------------------------------------------------
-    // 主ノード型にもとづく判定
+    // 軸によって決まる主ノード型と実際のノード型が一致して
+    // いなければfalseとする。
     //   attribute軸 => attribute
     //   //namespace軸 => namespace
     //   それ以外 => element
     //
-    let mut main_node_type = NodeType::Element;
-    if get_xnode_type(&xnode) == XNodeType::AxisAttribute {
-        main_node_type = NodeType::Attribute;
-    }
+    let main_node_type =
+        if get_xnode_type(&xnode) == XNodeType::AxisAttribute {
+            NodeType::Attribute
+        } else {
+            NodeType::Element
+        };
 
-    if node_type == NodeType::DocumentRoot {
-        return true;
-    }
-    if node_type != main_node_type {
+    if main_node_type != node.node_type() {
         return false;
     }
 
     // -------------------------------------------------------------
     // 名前の照合にもとづく判定 (「*」とも照合)
     //
-    if xnode_name == node.name() {
+    if name_test_pattern == node.name() {
         return true;
     }
-    if xnode_name.as_str() == "*" {
+    if name_test_pattern.as_str() == "*" {
         return true;
     }
 
     // -------------------------------------------------------------
     // 「na:*」との照合にもとづく判定
     //
-    let v: Vec<&str> = xnode_name.splitn(2, ":").collect();
+    let v: Vec<&str> = name_test_pattern.splitn(2, ":").collect();
     if v.len() == 2 && v[1] == "*" {
         if node.space_name() == v[0] {
             return true;
@@ -927,26 +916,86 @@ fn match_node_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
 }
 
 // ---------------------------------------------------------------------
-// ノード集合に対して、述語を順次適用して絞り込みをおこない、
-// 最終的に得られる新しいノード集合を返す。
+// [54] KindTest ::= DocumentTest                                   // ☆
+//                 | ElementTest                                    // *
+//                 | AttributeTest                                  // *
+//                 | SchemaElementTest                              // ☆
+//                 | SchemaAttributeTest                            // ☆
+//                 | PITest
+//                 | CommentTest
+//                 | TextTest
+//                 | AnyKindTest
+// ☆ 未実装 (構文解析のみ)
+// *  XNodeType::KindTestTypeName (引数にTypeNameが入っている場合) に
+//    ついては未実装
+//
+fn match_kind_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
+    // assert:: get_xnode_type(&kind_test_xnode) == XNodeType::KindTest
+
+    let node_type = node.node_type();
+
+    let test_xnode = get_left(xnode);
+    match get_xnode_type(&test_xnode) {
+        XNodeType::DocumentTest => {
+            // DocumentTestは未実装。
+        },
+        XNodeType::ElementTest => {
+            let arg = get_xnode_name(&test_xnode);
+            return node_type == NodeType::Element &&
+                   (arg == "" || arg == "*" || arg == node.name());
+        },              // 当面、TypeName (get_left(&test_xnode)) は無視
+        XNodeType::AttributeTest => {
+            let arg = get_xnode_name(&test_xnode);
+            return node_type == NodeType::Attribute &&
+                   (arg == "" || arg == "*" || arg == node.name());
+        },              // 当面、TypeName (get_left(&test_xnode)) は無視
+        XNodeType::SchemaElementTest => {
+            // SchemaElementTestは未実装。
+        },
+        XNodeType::SchemaAttributeTest => {
+            // SchemaAttributeTestは未実装。
+        },
+        XNodeType::PITest => {
+            let arg = get_xnode_name(&test_xnode);
+            return node_type == NodeType::Instruction &&
+                   (arg == "" || arg == node.name());
+        },
+        XNodeType::CommentTest => {
+            return node_type == NodeType::Comment;
+        },
+        XNodeType::TextTest => {
+            return node_type == NodeType::Text;
+        },
+        XNodeType::AnyKindTest => {
+            return true;
+        },
+        _ => {},
+    }
+
+    return false;
+}
+
+// ---------------------------------------------------------------------
+// シーケンスに対して、述語を順次適用してしぼり込み、
+// 最終的に得られるシーケンスを返す。
 // xNode: nTypeがXNodeAxis*であるノードの右。
 //    rightをたどったノードはすべてXNodePredicate{Rev}Topであり、
 //    そのleft以下に述語式の構文木がある。
 //
-fn filter_by_predicates(start_node_array: Vec<NodePtr>,
-            xnode: &XNodePtr,
-            eval_env: &mut EvalEnv) -> Result<Vec<NodePtr>, Box<Error>> {
-    let mut node_array = start_node_array;
+fn filter_by_predicates(xseq: &XSequence, xnode: &XNodePtr,
+            eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    let mut curr_xseq = xseq.clone();
     let mut curr_xnode = Rc::clone(xnode);
 
     while ! is_nil_xnode(&curr_xnode) {
         match get_xnode_type(&curr_xnode) {
             XNodeType::PredicateTop => {
-                node_array = filter_by_predicate(node_array,
+                curr_xseq = filter_by_predicate(&curr_xseq,
                             &get_left(&curr_xnode), false, eval_env)?;
             },
             XNodeType::PredicateRevTop => {
-                node_array = filter_by_predicate(node_array,
+                curr_xseq = filter_by_predicate(&curr_xseq,
                             &get_left(&curr_xnode), true, eval_env)?;
             },
             _ => {
@@ -958,29 +1007,39 @@ fn filter_by_predicates(start_node_array: Vec<NodePtr>,
 
         curr_xnode = get_right(&curr_xnode);
     }
-    return Ok(node_array);
+    return Ok(curr_xseq);
 }
 
 // ---------------------------------------------------------------------
-// ノード集合に対して、ある (ひとつの) 述語を適用して絞り込みをおこない、
-// 新しいノード集合を返す。
+// シーケンスに属する個々のアイテムに対して、ある (ひとつの) 述語を
+// 適用してしぼり込み、新しいシーケンスを返す。
 //
-fn filter_by_predicate(node_array: Vec<NodePtr>, xnode: &XNodePtr, reverse_order: bool, eval_env: &mut EvalEnv) -> Result<Vec<NodePtr>, Box<Error>> {
+fn filter_by_predicate(xseq: &XSequence, xnode: &XNodePtr,
+        reverse_order: bool, eval_env: &mut EvalEnv)
+                                    -> Result<XSequence, Box<Error>> {
+
     if is_nil_xnode(xnode) {
         return Err(cant_occur!("filter_by_predicate: xnode is nil"));
     }
 
-    let mut new_node_array: Vec<NodePtr> = vec!{};
-    for (i, node) in node_array.iter().enumerate() {
-        let last = node_array.len();
+    let mut result = new_xsequence();
+    for (i, xitem) in xseq.iter().enumerate() {
+
+        // 評価環境に文脈位置を設定する。
+        let last = xseq.len();
         let position = if ! reverse_order { i + 1 } else { last - i };
                                             // 文脈位置の番号は1が起点
         let old_position = eval_env.set_position(position);
         let old_last = eval_env.set_last(last);
-        let val = evaluate_xnode(&new_singleton_node(node), xnode, eval_env)?;
+
+        // シーケンス中、i番目のアイテムに対してxnodeを適用して評価する。
+        let val = evaluate_xnode(&new_singleton(xitem), xnode, eval_env)?;
+
+        // 評価環境を元に戻しておく。
         eval_env.set_last(old_last);
         eval_env.set_position(old_position);
 
+        // 評価結果をもとに、このアイテムを残すかどうか判定する。
         let mut do_push = false;
         match val.get_singleton_item() {
             Ok(XItem::XIInteger{value}) => {
@@ -995,10 +1054,11 @@ fn filter_by_predicate(node_array: Vec<NodePtr>, xnode: &XNodePtr, reverse_order
             _ => {},
         }
         if do_push {
-            new_node_array.push(node.rc_clone());
+            result.push(&xitem.clone());
         }
     }
-    return Ok(new_node_array);
+    return Ok(result);
+
 }
 
 // =====================================================================
@@ -1007,9 +1067,9 @@ fn filter_by_predicate(node_array: Vec<NodePtr>, xnode: &XNodePtr, reverse_order
 mod test {
 //    use super::*;
 
-    use xpath2::helpers::compress_spaces;
-    use xpath2::helpers::subtest_eval_xpath;
-    use xpath2::helpers::subtest_xpath;
+    use xpath_impl::helpers::compress_spaces;
+    use xpath_impl::helpers::subtest_eval_xpath;
+    use xpath_impl::helpers::subtest_xpath;
 
 
     // -----------------------------------------------------------------
@@ -1059,13 +1119,13 @@ mod test {
         "#);
 
         subtest_eval_xpath("if_expr", &xml, &[
-            ( "if (1 = 1) then 3 else 5", "(3)" ),
-            ( "if (1 = 9) then 3 else 5", "(5)" ),
+//            ( "if (1 = 1) then 3 else 5", "(3)" ),
+//            ( "if (1 = 9) then 3 else 5", "(5)" ),
             ( "if (prod/@discount) then prod/wholesale else prod/retail",
               r#"(<wholesale id="wa">, <wholesale id="wb">)"# ),
-            ( "if (item/@discount) then item/wholesale else item/retail",
-              r#"(<retail id="ra">, <retail id="rb">)"# ),
-        ]);
+//            ( "if (item/@discount) then item/wholesale else item/retail",
+//              r#"(<retail id="ra">, <retail id="rb">)"# ),
+                ]);
     }
 
     // -----------------------------------------------------------------
@@ -1255,7 +1315,8 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // element("a")
+    // element() | element(*) | element(sel)
+    // element(sel, type_anno) | element(sel, type_anno?) // 構文解析のみ
     //
     #[test]
     fn test_kind_test_element() {
@@ -1273,8 +1334,32 @@ mod test {
 
         subtest_eval_xpath("kind_test_element", &xml, &[
             ( "count(child::element())", "(5)" ),
-            ( "count(child::element('sel'))", "(3)" ),
             ( "count(child::element(*))", "(5)" ),
+            ( "count(child::element(sel))", "(3)" ),
+            ( "count(child::element(sel, typ))", "(3)" ),
+            ( "count(child::element(sel, typ?))", "(3)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // attribute() | attribute(*) | attribute(a)
+    // attribute(sel, type_anno)                          // 構文解析のみ
+    //
+    #[test]
+    fn test_kind_test_attribute() {
+        let xml = compress_spaces(r#"
+<root>
+    <a base="base">
+        <sel a="1" b="2"/>
+    </a>
+</root>
+        "#);
+
+        subtest_eval_xpath("kind_test_attribute", &xml, &[
+            ( "sel/attribute::attribute()", r#"(a="1", b="2")"# ),
+            ( "sel/attribute::attribute(*)", r#"(a="1", b="2")"# ),
+            ( "sel/attribute::attribute(a)", r#"(a="1")"# ),
+            ( "sel/attribute::attribute(a, typ)", r#"(a="1")"# ),
         ]);
     }
 
@@ -1302,6 +1387,38 @@ mod test {
         subtest_eval_xpath("kind_test_processing_instruction", &xml, &[
             ( "count(/child::processing-instruction())", "(3)" ),
             ( "count(/child::processing-instruction('style-sheet'))", "(2)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // ContextItemExpr
+    //
+    #[test]
+    fn test_context_item() {
+        let xml = compress_spaces(r#"
+<root>
+    <a base="base">
+        <b id="b"/>
+    </a>
+</root>
+        "#);
+
+        subtest_eval_xpath("context_item", &xml, &[
+            ( ".", r#"(<a base="base">)"# ),
+            ( "./b", r#"(<b id="b">)"# ),
+            ( "self::a", r#"(<a base="base">)"# ),
+            ( r#"self::a[@base="base"]"#, r#"(<a base="base">)"# ),
+            ( "self::b", "()" ),
+                    // 「self」と明記した場合はAxisSelfであり、
+                    // NodeTestを記述できる。
+            ( ".::a", "Syntax Error in XPath" ),
+            ( ".a", "Syntax Error in XPath" ),
+                    // 「.」と書き、さらにNodeTestを記述する構文はない。
+            ( r#".[name()="a"]"#, r#"(<a base="base">)"# ),
+            ( r#".[@base="base"]"#, r#"(<a base="base">)"# ),
+                    // しかし述語は記述できる。
+
+            ( "(1 to 20)[. mod 5 eq 0]", "(5, 10, 15, 20)" ),
         ]);
     }
 

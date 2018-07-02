@@ -1,13 +1,14 @@
 //
-// xpath2/helpers.rs
+// xpath_impl/helpers.rs
 //
 // amxml: XML processor with XPath.
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
 //
 
 use dom::new_document;
-use xpath2::eval::xnode_dump;
-use xpath2::parser::compile_xpath;
+//use sequence::*;
+use xpath_impl::eval::xnode_dump;
+use xpath_impl::parser::compile_xpath;
 
 // -----------------------------------------------------------------
 // 行頭の空白および改行を除去する。
@@ -83,7 +84,8 @@ pub fn subtest_eval_xpath(id: &str, xml: &str, test_specs: &[(&str, &str)]) {
         }
 
         match base_node.eval_xpath(xpath) {
-            Ok(actual) => {
+            Ok(result) => {
+                let actual = result.to_string();
                 println!("Seq: {}", actual);
                 assert_eq!(guess, actual,
                     "[id = {}]: xpath = {}: guess = {}, actual = {}",
