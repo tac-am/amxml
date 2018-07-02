@@ -5,7 +5,7 @@
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
 //
 //!
-//! XML processor with XPath 2.0.
+//! XML processor with some features of XPath 2.0.
 //!
 //! # Building DOM tree from XML document string
 //!
@@ -20,7 +20,7 @@
 //! assert_eq!(result, xml_string);
 //! ```
 //!
-//! # Retrieving the DOM node
+//! # Navigating DOM tree
 //!
 //! Navigating DOM tree, or retrieving the DOM node, can be done by
 //! 'root_element', 'parent', 'first_child', 'nth_child',
@@ -86,7 +86,7 @@
 //! # Evaluating XPath
 //!
 //! XPath can also be used to evaluate for the DOM tree and get boolean,
-//! numeric, string values (not only DOM node).
+//! numeric, string values as well as DOM node.
 //! The example below lists up the students, and whether or not each student
 //! got 80 or more points in <em>every</em> (not <em>some</em>) examination.
 //!
@@ -119,7 +119,7 @@
 //!      every $exam in $student/exam satisfies number($exam/@point) >= 80)
 //! "#;
 //! let result = root.eval_xpath(xpath).unwrap();
-//! assert_eq!(result, "(George, false, Harry, true, Ivonne, false)");
+//! assert_eq!(result.to_string(), "(George, false, Harry, true, Ivonne, false)");
 //! 
 //! ```
 //!
@@ -139,7 +139,7 @@ pub mod sax;
 pub mod dom;
 
 pub mod xpath;
-mod xpath2 {
+mod xpath_impl {
     pub mod lexer;
     pub mod parser;
     pub mod xitem;

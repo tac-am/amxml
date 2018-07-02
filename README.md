@@ -1,6 +1,6 @@
 # amxml
 
-XML processor with XPath 2.0.
+Rust XML processor with some features of XPath 2.0.
 
 # Building DOM tree from XML document string
 
@@ -81,7 +81,7 @@ Also see the description and example of 'each_node', 'get_first_node',
 # Evaluating XPath
 
 XPath can also be used to evaluate for the DOM tree and get boolean,
-numeric, string values (not only DOM node).
+numeric, string values as well as DOM node.
 The example below lists up the students, and whether or not each student
 got 80 or more points in <em>every</em> (not <em>some</em>) examination.
 
@@ -114,7 +114,7 @@ for $student in /root/student return
      every $exam in $student/exam satisfies number($exam/@point) >= 80)
 "#;
 let result = root.eval_xpath(xpath).unwrap();
-assert_eq!(result, "(George, false, Harry, true, Ivonne, false)");
+assert_eq!(result.to_string(), "(George, false, Harry, true, Ivonne, false)");
 
 ```
 
@@ -126,5 +126,4 @@ methods like 'append_child', 'insert_as_previous_sibling',
 'delete_attribute' methods.
 
 See the description and example of corresponding method.
-
 

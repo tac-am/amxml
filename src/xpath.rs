@@ -5,31 +5,52 @@
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
 //
 //!
-//! (Inner Module) XPath 2.0 Processor.
-//! Caller does not need to know about this module.
+//! XPath Processor (inner module) and helper structs.
 //!
 //! Retrieve or apply function to the nodes on XML DOM tree
 //! that match the specified xpath.
 //!
 //! NodePtr methods eval_xpath(), each_node(), get_first_node(), get_nodeset()
 //! accept xpath as argument.
+//!
 //! cf. Module amxml::dom -> Struct NodePtr -> Methods.
 //!
-//! # Restrictions
+//! ### Notes
 //!
-//! - Features related to 'Type' is restrictive, since this processor
-//!   does not refer xml schema.
-//! - Only String, Integer, Decimal, Double, Boolean types can be used.
-//!   Integer type is i64, both Decimal and Double types are f64.
+//! This processor supports only some of atomic types:
+//! String, Integer, Decimal, Double, Boolean.
+//! Features related to 'Type' is restrictive, since this processor
+//! does not refer xml schema.
 //!
-//! # Features that are not implemented yet
+//! Internally both Decimal and Double are implemented with type f64,
+//! but there are some difference.
+//! Decimal division <em>5.0 div 0.0</em> is error (division by zero),
+//! while Double division <em>5e0 div 0e0</em> is +Infinity.
+//!
+//! ### Built-in functions that are implemented
+//!
+//! - string, data
+//! - abs, ceiling, floor, round
+//! - codepoints-to-string, string-to-codepoints
+//! - compare
+//! - concat, string-join, substring, string-length, normalize-space, upper-case, lower-case, translate
+//! - contains, starts-with, ends-with, substring-before, substring-after
+//! - true, false
+//! - not
+//! - name, local-name, namespace-uri, number, lang, root
+//! - boolean, index-of, empty, exists, insert-before, remove, reverse, subsequence
+//! - zero-or-one, one-or-more, exactly-one
+//! - count, avg, max, min, sum
+//! - position, last
+//!
+//! ### Features that are not implemented yet
 //!
 //! - XPath 1.0 compatible mode
 //! - instance of
 //! - treat as
 //! - KindTest: SchemaElementTest | SchemaAttributeTest | DocumentTest
 //! - KindTest: ElementTest | AttributeTest (form with TypeName)
-//! - 'namespace' axis
+//! - namespace axis (deprecated as of XPath 2.0)
 //! - builtin function 'id'
 //! - Many built-in functions that is new in XPath 2.0
 //! - Collation (in built-in functions: contains, starts-with, etc.).
@@ -38,8 +59,10 @@
 use std::error::Error;
 
 use dom::*;
-use xpath2::parser::*;
-use xpath2::eval::*;
+use xpath_impl::parser::*;
+use xpath_impl::eval::*;
+use xpath_impl::xitem::*;
+use xpath_impl::xsequence::*;
 
 // =====================================================================
 //
@@ -57,17 +80,17 @@ impl NodePtr {
     /// let xml = r#"<root><a v="x"/><a v="y"/></root>"#;
     /// let doc = new_document(xml).unwrap();
     /// let result = doc.eval_xpath(r#"some $a in /root/a satisfies $a/@v = "y" "#).unwrap();
-    /// assert_eq!(result, "(true)");
+    /// assert_eq!(result.to_string(), "(true)");
     /// ```
     ///
     /// # Errors
     ///
     /// - When syntax error or unimplemented feature in xpath.
     ///
-    pub fn eval_xpath(&self, xpath: &str) -> Result<String, Box<Error>> {
+    pub fn eval_xpath(&self, xpath: &str) -> Result<Sequence, Box<Error>> {
         let xnode = compile_xpath(&String::from(xpath))?;
         let result = match_xpath(self, &xnode)?;
-        return Ok(result.to_string());
+        return Ok(new_sequence(&result));
     }
 
     // =================================================================
@@ -166,14 +189,97 @@ impl NodePtr {
 }
 
 // =====================================================================
+/// Sequence: return value type of NodePtr#eval_xpath().
+/// This is an ordered collection of zero or more items.
+///
+#[derive(Debug)]
+pub struct Sequence {
+    seq: XSequence,
+}
+
+// ---------------------------------------------------------------------
+//
+fn new_sequence(xseq: &XSequence) -> Sequence {
+    return Sequence{seq: xseq.clone()};
+}
+
+// =====================================================================
+/// Item: either an atomic value or a node.
+///
+#[derive(Debug)]
+pub struct Item {
+    item: XItem,
+}
+
+// ---------------------------------------------------------------------
+//
+fn new_item(xitem: &XItem) -> Item {
+    return Item{item: xitem.clone()};
+}
+
+// =====================================================================
+//
+impl Sequence {
+
+    // -----------------------------------------------------------------
+    /// Converts the sequence to the string, like:
+    ///
+    /// (&lt;elem attr="val"&gt;, 1, 2.0, 3e0, "str", true)
+    ///
+    /// This is a sequence (ordered collection of items) of length 6.
+    /// Here, the first item is a node.
+    /// 1 is Integer item, 2.0 (with decimal point) is Decimal item,
+    /// 3e0 (scientific notation) is Double item.
+    /// And "str" is String item, true is Boolean item.
+    ///
+    pub fn to_string(&self) -> String {
+        return self.seq.to_string();
+    }
+
+    // -----------------------------------------------------------------
+    /// Returns the length of sequence.
+    ///
+    pub fn len(&self) -> usize {
+        return self.seq.len();
+    }
+
+    // -----------------------------------------------------------------
+    /// Returns an N'th item in the sequence.
+    /// pos must be less than self.len().
+    ///
+    pub fn get_item(&self, pos: usize) -> Item {
+        let xitem = self.seq.get_item(pos);
+        return new_item(xitem);
+    }
+}
+
+// =====================================================================
+//
+impl Item {
+    // -----------------------------------------------------------------
+    /// Converts the item to the string.
+    ///
+    pub fn to_string(&self) -> String {
+        return self.item.to_string();
+    }
+
+    // -----------------------------------------------------------------
+    /// Returns item as NodePtr (when this item is a node).
+    ///
+    pub fn as_nodeptr(&self) -> Option<NodePtr> {
+        return self.item.as_nodeptr();
+    }
+}
+
+// =====================================================================
 //
 #[cfg(test)]
 mod test {
     use super::*;
 
-    use xpath2::helpers::compress_spaces;
-    use xpath2::helpers::subtest_xpath;
-    use xpath2::helpers::subtest_eval_xpath;
+    use xpath_impl::helpers::compress_spaces;
+    use xpath_impl::helpers::subtest_xpath;
+    use xpath_impl::helpers::subtest_eval_xpath;
 
     // -----------------------------------------------------------------
     // - child::para は文脈ノードの子の para 要素すべてを選択する。
@@ -967,36 +1073,6 @@ for $student in /root/student return
               "#,
               r#"(George, false, Harry, true, Ivonne, false)"# ),
         ]);
-
-
-
-
-
-
-
-
-//        let xml = compress_spaces(r#"
-//<root img="basic" base="base">
-//    <a img="a1" id="i1" />
-//    <a img="a2" id="i2" />
-//    <b img="b1" id="i1" />
-//    <b img="b2" id="i2" />
-//</root>
-//        "#);
-//
-//        subtest_xpath("basic_xpath", &xml, false, &[
-//            ( "/root", "basic" ),
-//            ( "/root/a", "a1a2" ),
-//            ( "/root/a[2]", "a2" ),
-//            ( "/root/*[name() = 'a']", "a1a2" ),
-//            ( "/root/a[9 idiv 4]", "a2" ),
-//            ( "/root/a[8 mod 3]", "a2" ),
-//            ( "/root/a[@id='i2']", "a2" ),
-//            ( "/root/*[@id='i2']", "a2b2" ),
-//            ( "//a", "a1a2" ),
-//            ( "/root/a[@img='a2']/following-sibling::node()", "b1b2" ),
-//            ( "/root/b[@img='b1']/preceding-sibling::node()", "a1a2" ),
-//        ]);
     }
 
 }
