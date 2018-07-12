@@ -10,10 +10,22 @@
 //! Retrieve or apply function to the nodes on XML DOM tree
 //! that match the specified xpath.
 //!
-//! NodePtr methods eval_xpath(), each_node(), get_first_node(), get_nodeset()
+//! NodePtr methods <strong>eval_xpath()</strong>,
+//! <strong>each_node()</strong>, <strong>get_first_node()</strong>,
+//! <strong>get_nodeset()</strong>
 //! accept xpath as argument.
 //!
-//! cf. Module amxml::dom -> Struct NodePtr -> Methods.
+//! cf. <a href="../dom/index.html">Module amxml::dom</a> -&gt; <a href="../dom/struct.NodePtr.html">Struct NodePtr</a> -&gt; <a href="../dom/struct.NodePtr.html#methods">Methods</a>.
+//!
+//! # New features in Version 0.5.0
+//!
+//! - String concatenation operator
+//! - Map operator
+//! - Arrow operator
+//! - Let expression
+//! - Inline function
+//! - Named function reference
+//! - Higher order function: for-each, filter
 //!
 //! ### Notes
 //!
@@ -25,7 +37,7 @@
 //! Internally both Decimal and Double are implemented with type f64,
 //! but there are some difference.
 //! Decimal division <em>5.0 div 0.0</em> is error (division by zero),
-//! while Double division <em>5e0 div 0e0</em> is +Infinity.
+//! while Double division <em>5E0 div 0E0</em> is +Infinity.
 //!
 //! ### Built-in functions that are implemented
 //!
@@ -42,18 +54,20 @@
 //! - zero-or-one, one-or-more, exactly-one
 //! - count, avg, max, min, sum
 //! - position, last
+//! - for-each, filter
 //!
 //! ### Features that are not implemented yet
 //!
-//! - XPath 1.0 compatible mode
+//! - Argument Placeholder
+//! - map, array
 //! - instance of
 //! - treat as
 //! - KindTest: SchemaElementTest | SchemaAttributeTest | DocumentTest
 //! - KindTest: ElementTest | AttributeTest (form with TypeName)
+//! - Many built-in functions that are new in XPath 2.0 and above
+//! - Collation (in built-in functions: contains, starts-with, etc.)
+//! - XPath 1.0 compatible mode
 //! - namespace axis (deprecated as of XPath 2.0)
-//! - builtin function 'id'
-//! - Many built-in functions that is new in XPath 2.0
-//! - Collation (in built-in functions: contains, starts-with, etc.).
 //!
 
 use std::error::Error;
@@ -71,7 +85,7 @@ impl NodePtr {
     // =================================================================
     // XML構文木のあるノードを起点としてxpathを評価し、
     // シーケンス (典型的にはノード集合) を取得する。
-    /// Evaluates the xpath and returns the sequence as String format.
+    /// Evaluates the xpath and returns the sequence.
     ///
     /// # Examples
     ///
@@ -206,7 +220,6 @@ fn new_sequence(xseq: &XSequence) -> Sequence {
 // =====================================================================
 /// Item: either an atomic value or a node.
 ///
-#[derive(Debug)]
 pub struct Item {
     item: XItem,
 }

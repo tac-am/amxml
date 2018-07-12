@@ -10,7 +10,6 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::f64;
 use std::i64;
-use std::rc::Rc;
 use std::str::FromStr;
 use std::usize;
 
@@ -21,37 +20,6 @@ use xpath_impl::xitem::*;
 use xpath_impl::xsequence::*;
 use xpath_impl::func::*;
 use xpath_impl::oper::*;
-
-// =====================================================================
-//
-fn xnode_to_string(xnode: &XNodePtr) -> String {
-    return xnode_dump_sub(xnode, 0, 0, "T", false);
-}
-
-pub fn xnode_dump(xnode: &XNodePtr) -> String {
-    return xnode_dump_sub(xnode, 0, 4, "T", true);
-}
-
-// =====================================================================
-//
-fn xnode_dump_sub(xnode: &XNodePtr, indent: usize, step: usize, pref: &str, recursive: bool) -> String {
-    let mut buf: String = format!("{}{} [{}] {}\n",
-            &" ".repeat(indent),
-            pref,
-            get_xnode_type(xnode).to_string(),
-            &get_xnode_name(&xnode));
-    if recursive {
-        let xl = get_left(xnode);
-        if ! is_nil_xnode(&xl) {
-            buf += &xnode_dump_sub(&xl, indent + step, step, "L", recursive);
-        }
-        let xr = get_right(xnode);
-        if ! is_nil_xnode(&xr) {
-            buf += &xnode_dump_sub(&xr, indent + step, step, "R", recursive);
-        }
-    }
-    return buf;
-}
 
 // ---------------------------------------------------------------------
 // 文字列→数値の変換。
@@ -77,11 +45,19 @@ fn usize_to_i64(n: usize) -> i64 {
 // =====================================================================
 // 評価環境
 //
+#[derive(Debug, PartialEq, Clone)]
+struct VarNameValue {
+    name: String,
+    value: XSequence,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct EvalEnv {
     doc_order_hash: HashMap<i64, i64>,      // node_id -> 順序番号
     position: usize,                        // 組み込み函数 position() の値
     last: usize,                            // 組み込み函数 last() の値
-    var_hash: HashMap<String, XItem>,       // 変数表
+    var_vec: Vec<VarNameValue>,             // 変数表
+                                            // 同名の変数にはスコープ規則を適用
 }
 
 fn new_eval_env() -> EvalEnv {
@@ -89,7 +65,7 @@ fn new_eval_env() -> EvalEnv {
         doc_order_hash: HashMap::new(),
         position: 0,
         last: 0,
-        var_hash: HashMap::new(),
+        var_vec: vec!{},
     }
 }
 
@@ -144,20 +120,46 @@ impl EvalEnv {
 
     // -----------------------------------------------------------------
     //
-    fn set_var(&mut self, name: &str, value: &XItem) {
-        self.var_hash.insert(String::from(name), value.clone());
+    fn set_var(&mut self, name: &str, value: &XSequence) {
+        self.var_vec.insert(0, VarNameValue{
+            name: String::from(name),
+            value: value.clone(),
+        });
     }
 
     // -----------------------------------------------------------------
     //
-    fn get_var(&mut self, name: &str) -> Option<&XItem> {
-        return self.var_hash.get(name);
+    fn set_var_item(&mut self, name: &str, value: &XItem) {
+        self.var_vec.insert(0, VarNameValue{
+            name: String::from(name),
+            value: new_singleton(value),
+        });
     }
 
     // -----------------------------------------------------------------
     //
     fn remove_var(&mut self, name: &str) {
-        self.var_hash.remove(name);
+        let mut index = usize::MAX;
+        for (i, entry) in self.var_vec.iter().enumerate() {
+            if entry.name == name {
+                index = i;
+                break;
+            }
+        }
+        if index != usize::MAX {
+            self.var_vec.remove(index as usize);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    //
+    fn get_var(&self, name: &str) -> Option<XSequence> {
+        for entry in self.var_vec.iter() {
+            if entry.name == name {
+                return Some(entry.value.clone());
+            }
+        }
+        return None;
     }
 
     // -----------------------------------------------------------------
@@ -207,19 +209,114 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
 
     let xnode_type = get_xnode_type(&xnode);
     match xnode_type {
+
         XNodeType::OperatorPath => {
+            // ---------------------------------------------------------
+            // (1) 左辺値を評価する。
+            //     ノードのみのシーケンスでなければエラー (空シーケンスは可)。
+            //
             let left_xnode = get_left(xnode);
             let lhs = if ! is_nil_xnode(&left_xnode) {
-                evaluate_xnode(xseq, &left_xnode, eval_env)?
-            } else {
-                new_xsequence()
-            };
+                    evaluate_xnode(xseq, &left_xnode, eval_env)?
+                } else {
+                    new_xsequence()
+                };
+
+            // ---------------------------------------------------------
+            // (1a) 右辺値の評価が必要ない場合は、そのまま左辺値を返す。
+            //
             let right_xnode = get_right(xnode);
-            if ! is_nil_xnode(&right_xnode) {
-                return evaluate_xnode(&lhs, &right_xnode, eval_env);
-            } else {
+            if is_nil_xnode(&right_xnode) {
                 return Ok(lhs);
             }
+
+            // ---------------------------------------------------------
+            // (1b) 左辺値がノードのみのシーケンスでなければ
+            //      エラー (空シーケンスは可)。
+            //
+            if ! lhs.is_no_atom() {
+                return Err(type_error!("Path演算子: ノード以外のアイテムがある。"));
+            }
+
+            // ---------------------------------------------------------
+            // (2) lhsの各ノードについて、右辺値を評価する。
+            //
+            let mut node_exists = false;
+            let mut atom_exists = false;
+            let mut result_seq = new_xsequence();
+
+            for item in lhs.iter() {
+                let xseq = new_singleton(&item);
+                let val_seq = evaluate_xnode(&xseq, &right_xnode, eval_env)?;
+
+                if val_seq.is_empty() {
+                    continue;
+                }
+
+                // -----------------------------------------------------
+                // (2-1) ノードごとの評価値を合併していく。
+                //       評価値がすべてノードのみのシーケンスか否かを
+                //       調べておく。
+                //
+                if val_seq.is_no_atom() {
+                    node_exists = true;
+                } else {
+                    atom_exists = true;
+                }
+                result_seq.append(&val_seq);
+
+                // -----------------------------------------------------
+                // (2-3) ノードと非ノードが混在していればエラー。
+                //
+                if node_exists && atom_exists {
+                    return Err(type_error!("Path演算子: ノードと非ノードが混在している。"));
+                }
+            }
+
+            // ---------------------------------------------------------
+            // (3) 最後に、ノードのみのシーケンスであれば、整列、重複排除する。
+            //
+            if node_exists {
+                let mut nodeset = result_seq.to_nodeset();
+                eval_env.sort_by_doc_order(&mut nodeset);
+                let sorted_seq = new_xsequence_from_node_array(&nodeset);
+                return Ok(sorted_seq);
+            } else {
+                return Ok(result_seq);
+            }
+        },
+
+        XNodeType::OperatorMap => {
+            // ---------------------------------------------------------
+            // (1) 左辺値を評価する。
+            //
+            let left_xnode = get_left(xnode);
+            let lhs = if ! is_nil_xnode(&left_xnode) {
+                    evaluate_xnode(xseq, &left_xnode, eval_env)?
+                } else {
+                    new_xsequence()
+                };
+
+            // ---------------------------------------------------------
+            // (1a) 右辺値の評価が必要ない場合は、そのまま左辺値を返す。
+            //
+            let right_xnode = get_right(xnode);
+            if is_nil_xnode(&right_xnode) {
+                return Ok(lhs);
+            }
+
+            // ---------------------------------------------------------
+            // (2) lhsの各ノードについて右辺値を評価し、順に合併していく。
+            //     整列や重複排除はしない。
+            //
+            let mut result_seq = new_xsequence();
+            for item in lhs.iter() {
+                let xseq = new_singleton(&item);
+                let val_seq = evaluate_xnode(&xseq, &right_xnode, eval_env)?;
+                result_seq.append(&val_seq);
+            }
+
+            return Ok(result_seq);
         },
 
         XNodeType::AxisAncestor |
@@ -239,22 +336,12 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         },
 
         XNodeType::ContextItem => {
-            println!("ContextItem => xseq = {}", xseq.to_string());
             return Ok(xseq.clone());
         }
 
-        XNodeType::ApplyPredicates => {
-            // leftを評価して得られるシーケンスに対し、rightの述語を
-            // 適用してしぼり込む。
-            //
-            let lhs = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
-            let rhs = get_right(xnode);
-            if ! is_nil_xnode(&rhs) {
-                let filtered_xseq = filter_by_predicates(&lhs, &rhs, eval_env)?;
-                return Ok(filtered_xseq);
-            } else {
-                return Ok(lhs);
-            }
+        XNodeType::ApplyPostfix => {
+            return apply_postfix(xseq, &get_left(xnode), &get_right(xnode),
+                                        &mut eval_env.clone());
         },
 
         XNodeType::OperatorConcatenate => {
@@ -406,6 +493,12 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
             return op_numeric_mod(&vec!{lhs, rhs});
         },
 
+        XNodeType::OperatorConcat => {
+            let lhs = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
+            let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
+            return fn_concat(&vec!{&lhs, &rhs});
+        },
+
         XNodeType::OperatorUnion => {
             let lhs = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
             let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
@@ -470,12 +563,30 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
             let range = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
             let mut result = new_xsequence();
             for xitem in range.iter() {
-                eval_env.set_var(var_name.as_str(), xitem);
+                eval_env.set_var_item(var_name.as_str(), xitem);
                 let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
                 result.append(&rhs);
                 eval_env.remove_var(var_name.as_str());
             }
             return Ok(result);
+        },
+
+        XNodeType::LetExpr => {
+            return evaluate_xnode(xseq, &get_right(xnode), eval_env);
+        },
+
+        XNodeType::LetVarBind => {
+            // -----------------------------------------------------
+            // 左辺値を評価し、変数値として登録した上で、右辺値を評価する。
+            //
+            let var_value = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
+            let var_name = get_xnode_name(&xnode);
+
+            eval_env.set_var(var_name.as_str(), &var_value);
+            let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
+            eval_env.remove_var(var_name.as_str());
+
+            return Ok(rhs);
         },
 
         XNodeType::SomeExpr => {
@@ -487,7 +598,7 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
             let range = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
 
             for xitem in range.iter() {
-                eval_env.set_var(var_name.as_str(), xitem);
+                eval_env.set_var_item(var_name.as_str(), xitem);
                 let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
                 if rhs.effective_boolean_value()? == true {
                     return Ok(new_singleton_boolean(true));
@@ -505,7 +616,7 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
             let var_name = get_xnode_name(&xnode);
             let range = evaluate_xnode(xseq, &get_left(xnode), eval_env)?;
             for xitem in range.iter() {
-                eval_env.set_var(var_name.as_str(), xitem);
+                eval_env.set_var_item(var_name.as_str(), xitem);
                 let rhs = evaluate_xnode(xseq, &get_right(xnode), eval_env)?;
                 if rhs.effective_boolean_value()? == false {
                     return Ok(new_singleton_boolean(false));
@@ -532,7 +643,7 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         }
 
         XNodeType::FunctionCall => {
-            // rightに連なっているXNodeArgumentTopノード群のleft以下にある
+            // rightに連なっているArgumentTopノード群のleft以下にある
             // 式を評価し、argsArray (引数の配列) を得た後、
             // この引数列を渡して函数を評価する。
             //
@@ -567,20 +678,26 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         XNodeType::DoubleLiteral => {
             return Ok(new_singleton_double(atof(&get_xnode_name(&xnode))));
         },
-        XNodeType::VariableReference => {
+
+        XNodeType::InlineFunction |
+        XNodeType::NamedFunctionRef => {
+            // インライン函数 | 名前付き函数参照:
+            // この時点では評価せず、シングルトンとして包んで返す。
+            return Ok(new_singleton_xnodeptr(&xnode));
+        },
+
+        XNodeType::VarRef => {
             let var_name = get_xnode_name(&xnode);
-            match eval_env.get_var(var_name.as_str()) {
-                Some(item) => {
-                    return Ok(new_singleton(item));
-                },
-                None => {
-                    return Ok(new_xsequence());
-                },
+            if let Some(xseq) = eval_env.get_var(var_name.as_str()) {
+                return Ok(xseq);
+            } else {
+                return Ok(new_xsequence());
             }
         },
+
         _ => {
             return Err(cant_occur!(
-                "evaluate_xnode: xnode = {}", xnode_to_string(xnode)));
+                "evaluate_xnode: xnode_type = {:?}", xnode_type));
         }
     }
 }
@@ -597,11 +714,6 @@ fn match_location_path(xseq: &XSequence, xnode: &XNodePtr,
         new_node_array.append(&mut matched_xseq.to_nodeset());
     }
 
-    // -------------------------------------------------------------
-    // 得られたノード集合を文書順に整列し、重複を除去する。
-    // // 「!」演算子 (XPath-3.0) の場合は整列しない。
-    //
-    eval_env.sort_by_doc_order(&mut new_node_array);
     let result = new_xsequence_from_node_array(&new_node_array);
     return Ok(result);
 }
@@ -674,9 +786,10 @@ fn match_loc_step(node: &NodePtr, xnode: &XNodePtr,
                 node_array.push(node.rc_clone());
             }
         },
+
         _ => {
-            return Err(cant_occur!("match_loc_step: xnode: {}",
-                    xnode_to_string(&xnode)));
+            return Err(cant_occur!("match_loc_step: xnode_type: {:?}",
+                    get_xnode_type(&xnode)));
         },
     }
 
@@ -842,10 +955,10 @@ fn array_preceding_sibling(node: &NodePtr) -> Vec<NodePtr> {
 fn match_node_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
 
     // xnode: AxisNNNN;
-    // get_left(&xnode) がXNodeType::KindTestのとき:
-    //     そのget_xnode_name(&xnode): KindTestで照合する規則
     // get_left(&xnode) がNilのとき:
     //     get_xnode_name(&xnode): NameTestで照合する名前
+    // get_left(&xnode) がXNodeType::KindTestのとき:
+    //     そのget_left(&xnode): KindTestで照合する規則
     //
     let kind_test_xnode = get_left(&xnode);
     if is_nil_xnode(&kind_test_xnode) {
@@ -916,15 +1029,16 @@ fn match_name_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
 }
 
 // ---------------------------------------------------------------------
-// [54] KindTest ::= DocumentTest                                   // ☆
-//                 | ElementTest                                    // *
-//                 | AttributeTest                                  // *
-//                 | SchemaElementTest                              // ☆
-//                 | SchemaAttributeTest                            // ☆
-//                 | PITest
-//                 | CommentTest
-//                 | TextTest
-//                 | AnyKindTest
+// [ 83] KindTest ::= DocumentTest                                  // ☆
+//                  | ElementTest                                   // *
+//                  | AttributeTest                                 // *
+//                  | SchemaElementTest                             // ☆
+//                  | SchemaAttributeTest                           // ☆
+//                  | PITest
+//                  | CommentTest
+//                  | TextTest
+//                  | NamespaceNodeTest                             // ☆
+//                  | AnyKindTest
 // ☆ 未実装 (構文解析のみ)
 // *  XNodeType::KindTestTypeName (引数にTypeNameが入っている場合) に
 //    ついては未実装
@@ -966,6 +1080,9 @@ fn match_kind_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
         XNodeType::TextTest => {
             return node_type == NodeType::Text;
         },
+        XNodeType::NamespaceNodeTest => {
+            // NamespaceNodeTestは未実装。
+        },
         XNodeType::AnyKindTest => {
             return true;
         },
@@ -976,17 +1093,73 @@ fn match_kind_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
 }
 
 // ---------------------------------------------------------------------
-// シーケンスに対して、述語を順次適用してしぼり込み、
+// [ApplyPostfix]
+// 左辺値 (PrimaryExpr) に対して、右辺にある:
+//   - 述語を適用して左辺値 (シーケンス) をしぼり込む、
+//   - (左辺値がインライン函数と想定し、) 引数リストを渡して函数を実行する、
+// ことにより、順次シーケンスを変形していく。
+//
+// ApplyPostfix --- PredicateTop --- ArgumentListTop --- ....
+//      |
+//  Expr (典型的にはノード集合)
+//  VarRef (典型的にはインライン函数)
+//
+fn apply_postfix(xseq: &XSequence,
+            primary_xnode: &XNodePtr, postfix_xnode: &XNodePtr,
+            eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    let primary_expr = evaluate_xnode(xseq, primary_xnode, eval_env)?;
+    let mut curr_xseq = primary_expr.clone();
+
+    let mut curr_xnode = postfix_xnode.clone();
+    while ! is_nil_xnode(&curr_xnode) {
+        match get_xnode_type(&curr_xnode) {
+            XNodeType::PredicateTop => {
+                curr_xseq = filter_by_predicate(&curr_xseq,
+                            &get_left(&curr_xnode), false, eval_env)?;
+            },
+            XNodeType::PredicateRevTop => {
+                curr_xseq = filter_by_predicate(&curr_xseq,
+                            &get_left(&curr_xnode), true, eval_env)?;
+            },
+            XNodeType::ArgumentListTop => {
+                curr_xseq = evaluate_inline_func(xseq, &curr_xseq,
+                                    &curr_xnode, eval_env)?;
+            },
+            _ => {
+                return Err(cant_occur!(
+                    "apply_postfix: 不正なノード: {:?}",
+                        get_xnode_type(&curr_xnode)));
+            }
+        }
+        curr_xnode = get_right(&curr_xnode);
+    }
+
+    return Ok(curr_xseq);
+}
+
+// ---------------------------------------------------------------------
+// Location Stepで得たシーケンスに対して、述語を順次適用してしぼり込み、
 // 最終的に得られるシーケンスを返す。
-// xNode: nTypeがXNodeAxis*であるノードの右。
-//    rightをたどったノードはすべてXNodePredicate{Rev}Topであり、
+//
+// apply_postfix() の処理の一部といった恰好だが、構文上、述語のみ
+// 並んでいる状況に対応する。
+//
+// xseq: AxisNNNNNNNN (Location Step) を評価して得たシーケンス (ノード集合)。
+// xnode: AxisNNNNNNNNの右。
+//    rightをたどったノードはすべてPredicate{Rev}Topであり、
 //    そのleft以下に述語式の構文木がある。
+//    各ノードに対して述語を適用し、trueであったもののみにしぼり込む。
+//
+// AxisNNNNNNNN --- Predicate{Rev}Top --- Predicate{Rev}Top ---...
+//  (NameTest)              |                     |
+//                        (Expr)                (Expr)
 //
 fn filter_by_predicates(xseq: &XSequence, xnode: &XNodePtr,
             eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     let mut curr_xseq = xseq.clone();
-    let mut curr_xnode = Rc::clone(xnode);
+    let mut curr_xnode = xnode.clone();
 
     while ! is_nil_xnode(&curr_xnode) {
         match get_xnode_type(&curr_xnode) {
@@ -1061,6 +1234,248 @@ fn filter_by_predicate(xseq: &XSequence, xnode: &XNodePtr,
 
 }
 
+// ---------------------------------------------------------------------
+// インライン函数を実行する。
+// xseq: 引数の値を評価する際、対象とするシーケンス (文脈ノード)。
+// curr_xseq: シングルトン (XItem: InlineFunction型のXNodePtr)。
+//            このXNodePtrを取り出し、インライン函数として実行する。
+// InlineFunction --- ReturnType ------- Param ------- Param ---...
+//       |                |            (varname)     (varname)
+//       |                |                |             |
+//       |          (SequenceType)   (SequenceType)(SequenceType)
+//       |
+//     Expr (FunctionBody) ---...
+//       |
+//      ...
+//                      ☆戻り値型も照合すること。
+//
+// curr_xnode: ArgumentListTop型のXNodePtr。インライン函数に渡す引数並び。
+//      ArgumentListTop
+//             |
+//        ArgumentTop --- ArgumentTop ---...
+//             |               | 第2引数
+//             |           OpLiteral
+//             | 第1引数
+//            OpEQ --- (rhs)
+//             |
+//           (lhs)
+//
+// eval_env: 評価環境。
+//
+fn evaluate_inline_func(xseq: &XSequence, curr_xseq: &XSequence,
+                curr_xnode: &XNodePtr,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    let inline_func_xnode = curr_xseq.get_singleton_xnodeptr()?;
+    if get_xnode_type(&inline_func_xnode) != XNodeType::InlineFunction {
+        return Err(cant_occur!(
+            "call_inline_func: 単独のインライン函数でない: {:?}。",
+                get_xnode_type(&inline_func_xnode)));
+    }
+
+    let arg_xnode = get_left(&curr_xnode);
+
+    let mut argument_xseq: Vec<XSequence> = vec!{};
+    let mut curr_arg_top = arg_xnode.clone();
+    while ! is_nil_xnode(&curr_arg_top) {
+        let arg_expr = get_left(&curr_arg_top);
+        let val = evaluate_xnode(xseq, &arg_expr, eval_env)?;
+        argument_xseq.push(val);
+        curr_arg_top = get_right(&curr_arg_top);
+    }
+    return call_inline_func(&inline_func_xnode,
+                argument_xseq, eval_env);
+}
+
+// ---------------------------------------------------------------------
+//
+fn call_inline_func(inline_func_xnode: &XNodePtr,
+                argument_xseq: Vec<XSequence>,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    // -----------------------------------------------------------------
+    // 函数定義の実体を取り出す。
+    //
+    let func_body_xnode = get_left(&inline_func_xnode);
+
+    // -----------------------------------------------------------------
+    // 仮引数名を調べる。
+    // // 個数、引数型も照合すること。
+    //
+    let mut param_names: Vec<String> = vec!{};
+    let mut sequence_types: Vec<XNodePtr> = vec!{};
+    let return_type = get_right(&inline_func_xnode);
+    let mut param_xnode = get_right(&return_type);
+    while ! is_nil_xnode(&param_xnode) {
+        param_names.push(get_xnode_name(&param_xnode));
+        sequence_types.push(get_left(&param_xnode));
+        param_xnode = get_right(&param_xnode);
+    }
+
+    // -----------------------------------------------------------------
+    // 実引数の値を変数 (仮引数) に束縛する。
+    //
+    for (i, val) in argument_xseq.iter().enumerate() {
+        if match_sequence_type(&val, &sequence_types[i])? == false {
+            return Err(type_error!(
+                    "インライン函数: 引数の型が合致していない: {}。",
+                    val.to_string()));
+        }
+        eval_env.set_var(&param_names[i], &val);
+    }
+
+    // -----------------------------------------------------------------
+    // インライン函数を実行する。
+    //
+    let xseq = new_xsequence();
+    let value = evaluate_xnode(&xseq, &func_body_xnode, eval_env)?;
+
+    // -----------------------------------------------------------------
+    // 変数 (仮引数) を削除する。
+    //
+    let mut i: i64 = (param_names.len() as i64) - 1;
+    while 0 <= i {
+        eval_env.remove_var(&param_names[i as usize]);
+        i -= 1;
+    }
+
+    return Ok(value);
+}
+
+// ---------------------------------------------------------------------
+// 名前付き函数参照を、引数を渡して呼び出す。
+//
+fn call_named_func(named_function_ref_xnode: &XNodePtr,
+                argument_xseq: Vec<XSequence>,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    // -----------------------------------------------------------------
+    // 函数定義の実体を取り出す。
+    //
+    let func_name = get_xnode_name(&named_function_ref_xnode);
+    let v: Vec<&str> = func_name.split("#").collect();
+    let arity = atoi(v[1]) as usize;
+    if arity != argument_xseq.len() {
+        return Err(type_error!(
+                "名前付き函数参照 ({}): 引数の個数が合致しない: {}。",
+                func_name, argument_xseq.len()));
+    }
+
+    let xseq = new_xsequence();
+    return evaluate_function(&v[0], &argument_xseq, &xseq, eval_env);
+}
+
+// ---------------------------------------------------------------------
+// インライン函数または名前付き函数参照を呼び出す。
+//
+pub fn call_function(func_xnode: &XNodePtr,
+                argument_xseq: Vec<XSequence>,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    match get_xnode_type(&func_xnode) {
+        XNodeType::InlineFunction => {
+            return call_inline_func(func_xnode, argument_xseq, eval_env);
+        },
+        XNodeType::NamedFunctionRef => {
+            return call_named_func(func_xnode, argument_xseq, eval_env);
+        },
+        _ => {
+            return Err(cant_occur!("call_h_function: XNodeType = {:?}",
+                    get_xnode_type(&func_xnode)));
+        },
+    }
+}
+
+// ---------------------------------------------------------------------
+// シーケンスの型を、
+// シーケンス型の定義 (XNodeType::SequenceTypeであるxnodeで表現) と照合する。
+//
+// [ 79] SequenceType ::= ("empty-sequence" "(" ")")
+//                      | (ItemType OccurenceIndicator?)
+// [ 80] OccurrenceIndicator ::= "?" | "*" | "+"
+// [ 81] ItemType ::= KindTest
+//                  | ("item" "(" ")")
+//                  | FunctionTest                                     ☆
+//                  | MapTest                                          ☆
+//                  | ArrayTest                                        ☆
+//                  | AtomicOrUnionType                               (☆)
+//                  | ParenthesizedItemType                            ☆
+// [ 82] AtomicOrUnionType ::= EQName
+//
+fn match_sequence_type(xseq: &XSequence, xnode: &XNodePtr) -> Result<bool, Box<Error>> {
+    if get_xnode_type(xnode) != XNodeType::SequenceType {
+        return Err(cant_occur!(
+                "match_sequence_type: xnodeがSequenceTypeでない: {:?}。",
+                get_xnode_type(xnode)));
+    }
+
+    let type_xnode = get_left(xnode);
+    match get_xnode_type(&type_xnode) {
+        XNodeType::EmptySequenceTest => {
+            return Ok(xseq.is_empty());
+        },
+        XNodeType::KindTest => {
+            if match_occurence(xseq, &get_xnode_name(xnode))? == false {
+                return Ok(false);
+            }
+            for xitem in xseq.iter() {
+                match xitem.as_nodeptr() {
+                    Some(node) => {
+                        if match_kind_test(&node, &type_xnode) == false {
+                            return Ok(false);
+                        }
+                    },
+                    None => {
+                        return Ok(false);
+                    },
+                }
+            }
+        },
+        XNodeType::ItemTest => {
+            if match_occurence(xseq, &get_xnode_name(xnode))? == false {
+                return Ok(false);
+            }
+            for xitem in xseq.iter() {
+                if xitem.is_item() == false {
+                    return Ok(false);
+                }
+            }
+        },
+        XNodeType::AtomicType => {
+            if match_occurence(xseq, &get_xnode_name(xnode))? == false {
+                return Ok(false);
+            }
+            let type_name = get_xnode_name(&type_xnode);
+            for xitem in xseq.iter() {
+                if xitem.castable_as(&type_name) == false {
+                    return Ok(false);
+                }
+            }
+        },
+        _ => {
+        },
+    }
+
+    return Ok(true);
+}
+
+// ---------------------------------------------------------------------
+// シーケンスに含まれるアイテムの個数 (OccurenceIndicator) を照合する。
+// indicator: ? | * | + | ""
+//
+fn match_occurence(xseq: &XSequence, indicator: &str) -> Result<bool, Box<Error>> {
+    let len = xseq.len();
+    match indicator {
+        "?" => return Ok(len <= 1),
+        "*" => return Ok(true),
+        "+" => return Ok(1 <= len),
+        ""  => return Ok(len == 1),
+        _   => return Err(cant_occur!(
+                        "match_occurence: bad indicator \"{}\".",
+                        indicator)),
+    }
+}
+
 // =====================================================================
 //
 #[cfg(test)]
@@ -1119,12 +1534,12 @@ mod test {
         "#);
 
         subtest_eval_xpath("if_expr", &xml, &[
-//            ( "if (1 = 1) then 3 else 5", "(3)" ),
-//            ( "if (1 = 9) then 3 else 5", "(5)" ),
+            ( "if (1 = 1) then 3 else 5", "(3)" ),
+            ( "if (1 = 9) then 3 else 5", "(5)" ),
             ( "if (prod/@discount) then prod/wholesale else prod/retail",
               r#"(<wholesale id="wa">, <wholesale id="wb">)"# ),
-//            ( "if (item/@discount) then item/wholesale else item/retail",
-//              r#"(<retail id="ra">, <retail id="rb">)"# ),
+            ( "if (item/@discount) then item/wholesale else item/retail",
+              r#"(<retail id="ra">, <retail id="rb">)"# ),
                 ]);
     }
 
@@ -1419,6 +1834,124 @@ mod test {
                     // しかし述語は記述できる。
 
             ( "(1 to 20)[. mod 5 eq 0]", "(5, 10, 15, 20)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // OperatorConcat
+    //
+    #[test]
+    fn test_operator_concat() {
+        let xml = compress_spaces(r#"
+<root>
+    <a base="base">
+        <b id="b"/>
+    </a>
+</root>
+        "#);
+
+        subtest_eval_xpath("operator_concat", &xml, &[
+            ( r#" "あい" || "うえ" "#, r#"("あいうえ")"# ),
+            ( r#" 123 || 456 || 789 "#, r#"("123456789")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // OperatorMap
+    //
+    #[test]
+    fn test_operator_map() {
+        let xml = compress_spaces(r#"
+<root>
+    <z>
+        <a base="base">
+            <b>b1</b>
+            <b>b2</b>
+        </a>
+    </z>
+</root>
+        "#);
+
+        subtest_eval_xpath("operator_map", &xml, &[
+            ( r#"sum((1, 3, 5)!(.*.)) "#, r#"(35)"# ),
+            ( r#"string-join((1 to 4) ! "*") "#, r#"("****")"# ),
+            ( r#"string-join((1 to 4) ! "*", ".") "#, r#"("*.*.*.*")"# ),
+            ( r#"child::b/string()!concat("id-", .)"#, r#"("id-b1", "id-b2")"# ),
+            ( r#"string-join(ancestor::*!name(), '/')"#, r#"("root/z")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // ArrowExpr
+    //
+    #[test]
+    fn test_arrow_expr() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+
+        subtest_eval_xpath("arrow_expr", &xml, &[
+            ( r#" 'aBcDe' => upper-case() => substring(2, 3)"#, r#"("BCD")"# ),
+            ( "let $f := function($a) { $a * $a } return 5 => $f() ", "(25)" ),
+
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // LetExpr
+    //
+    #[test]
+    fn test_let_expr() {
+        let xml = compress_spaces(r#"
+<root>
+    <z>
+        <a base="base">
+            <b>b1</b>
+            <b>b2</b>
+        </a>
+    </z>
+</root>
+        "#);
+
+        subtest_eval_xpath("let_expr", &xml, &[
+            ( r#"let $x := 4, $y := 3 return $x + $y"#, r#"(7)"# ),
+            ( r#"let $x := 4, $y := $x * 2 return $x + $y"#, r#"(12)"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // InlineFunction
+    //
+    #[test]
+    fn test_inline_function() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+
+        subtest_eval_xpath("inline_function", &xml, &[
+            ( "let $f := function() { 4 } return $f() ", "(4)" ),
+            ( "let $f := function($n as integer) { $n * 3 } return $f(5) ", "(15)" ),
+            ( r#"let $x := function ($m as integer, $n as integer) { ($m + $n) * 3 } return $x(2, 4) "#, r#"(18)"# ),
+            ( "for-each(1 to 4, function($x as integer) { $x * $x })", "(1, 4, 9, 16)" ),
+            ( "for-each(1 to 4, function($x as node()) { $x })", "Type Error" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // NamedFunctionRef
+    //
+    #[test]
+    fn test_named_function_ref() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+
+        subtest_eval_xpath("named_function_ref", &xml, &[
+            ( r#"for-each(("john", "jane"), fn:string-to-codepoints#1)"#,
+                        "(106, 111, 104, 110, 106, 97, 110, 101)" ),
         ]);
     }
 

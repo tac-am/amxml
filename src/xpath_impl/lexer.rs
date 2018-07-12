@@ -18,12 +18,11 @@ const EOF: char = '\u{0000}';
 pub enum TType {
     EOF,
     InnerName,
-    // specialTokenRule() を適用する前で、
-    // Name、NodeType、AxisName のどれになるか未確定の状態
+    // 特別なトークン規則を適用する前で、最終的なトークン種が未確定の状態
     Nop,
-    // 2語から成るトークンの2語め
+    // 無効なトークン
     Name,
-    NodeType,
+//    NodeType,
     AxisName,
     SlashSlash,
     Slash,
@@ -94,6 +93,7 @@ pub enum TType {
     EmptySequence,
     Item,
     TypeSwitch,
+    Switch,
     DocumentTest,
     ElementTest,
     AttributeTest,
@@ -102,7 +102,22 @@ pub enum TType {
     PITest,
     CommentTest,
     TextTest,
+    NamespaceNodeTest,
     AnyKindTest,
+    BracedURILiteral,
+    OperatorConcat,
+    Sharp,
+    Bind,
+    Arrow,
+    LeftCurly,
+    RightCurly,
+    ColonAsterisk,
+    AsteriskColon,
+    OperatorMap,
+    Let,
+    Array,
+    Map,
+    Function,
 }
 
 // =====================================================================
@@ -111,6 +126,13 @@ pub enum TType {
 pub struct Token {
     t_type: TType,
     name: String,
+}
+
+fn new_token(t_type: TType, name: &str) -> Token {
+    return Token {
+        t_type: t_type,
+        name: String::from(name),
+    };
 }
 
 impl Token {
@@ -125,106 +147,27 @@ impl Token {
 // =====================================================================
 //
 #[derive(Debug)]
-pub struct Lexer2 {
+pub struct Lexer {
     char_vec: Vec<char>,
+    ch_index: usize,
     tokens: Vec<Token>,
     index: usize,
+    mark_index: usize,
 }
 
 // =====================================================================
-/// Lexer2: 
+/// Lexer: 
 // 字句解析器
 // // 初めに末尾まで読んでトークンに分解し、トークン型を調べるように実装。
-impl Lexer2 {
+impl Lexer {
 
     // -----------------------------------------------------------------
     //
     #[allow(dead_code)]
     pub fn token_dump(&self) -> String {
-        let ttype_desc: HashMap<TType, &str> = [
-            ( TType::EOF,                 "EOF" ),
-            ( TType::InnerName,           "InnerName" ),
-            ( TType::Nop,                 "Nop" ),
-            ( TType::Name,                "Name" ),
-            ( TType::NodeType,            "NodeType" ),
-            ( TType::AxisName,            "AxisName" ),
-            ( TType::SlashSlash,          "SlashSlash" ),
-            ( TType::Slash,               "Slash" ),
-            ( TType::DotDot,              "DotDot" ),
-            ( TType::Dot,                 "Dot" ),
-            ( TType::ColonColon,          "ColonColon" ),
-            ( TType::Colon,               "Colon" ),
-            ( TType::ValueEQ,             "ValueEQ" ),
-            ( TType::ValueNE,             "ValueNE" ),
-            ( TType::ValueGT,             "ValueGT" ),
-            ( TType::ValueGE,             "ValueGE" ),
-            ( TType::ValueLT,             "ValueLT" ),
-            ( TType::ValueLE,             "ValueLE" ),
-            ( TType::GeneralEQ,           "GeneralEQ" ),
-            ( TType::GeneralNE,           "GeneralNE" ),
-            ( TType::GeneralGT,           "GeneralGT" ),
-            ( TType::GeneralGE,           "GeneralGE" ),
-            ( TType::GeneralLT,           "GeneralLT" ),
-            ( TType::GeneralLE,           "GeneralLE" ),
-            ( TType::IsSameNode,          "IsSameNode" ),
-            ( TType::NodeBefore,          "NodeBefore" ),
-            ( TType::NodeAfter,           "NodeAfter" ),
-            ( TType::And,                 "And" ),
-            ( TType::Or,                  "Or" ),
-            ( TType::Union,               "Union" ),
-            ( TType::Intersect,           "Intersect" ),
-            ( TType::Except,              "Except" ),
-            ( TType::To,                  "To" ),
-            ( TType::InstanceOf,          "InstanceOf" ),
-            ( TType::TreatAs,             "TreatAs" ),
-            ( TType::CastableAs,          "CastableAs" ),
-            ( TType::CastAs,              "CastAs" ),
-            ( TType::Plus,                "Plus" ),
-            ( TType::Minus,               "Minus" ),
-            ( TType::Div,                 "Div" ),
-            ( TType::IDiv,                "IDiv" ),
-            ( TType::Mod,                 "Mod" ),
-            ( TType::If,                  "If" ),
-            ( TType::For,                 "For" ),
-            ( TType::Some,                "Some" ),
-            ( TType::Every,               "Every" ),
-//            ( TType::Then,                "Then" ),
-//            ( TType::Else,                "Else" ),
-//            ( TType::In,                  "In" ),
-//            ( TType::Return,              "Return" ),
-//            ( TType::Satisfies,           "Satisfies" ),
-            ( TType::Asterisk,            "Asterisk" ),
-            ( TType::Dollar,              "Dollar" ),
-            ( TType::LeftBracket,         "LeftBracket" ),
-            ( TType::RightBracket,        "RightBracket" ),
-            ( TType::LeftParen,           "LeftParen" ),
-            ( TType::RightParen,          "RightParen" ),
-            ( TType::At,                  "At" ),
-            ( TType::Question,            "Question" ),
-            ( TType::Comma,               "Comma" ),
-            ( TType::IntegerLiteral,      "IntegerLiteral" ),
-            ( TType::DecimalLiteral,      "DecimalLiteral" ),
-            ( TType::DoubleLiteral,       "DoubleLiteral" ),
-            ( TType::StringLiteral,       "StringLiteral" ),
-            ( TType::EmptySequence,       "EmptySequence" ),
-            ( TType::Item,                "Item" ),
-            ( TType::TypeSwitch,          "TypeSwitch" ),
-            ( TType::DocumentTest,        "DocumentTest" ),
-            ( TType::ElementTest,         "ElementTest" ),
-            ( TType::AttributeTest,       "AttributeTest" ),
-            ( TType::SchemaElementTest,   "SchemaElementTest" ),
-            ( TType::SchemaAttributeTest, "SchemaAttributeTest" ),
-            ( TType::PITest,              "PITest" ),
-            ( TType::CommentTest,         "CommentTest" ),
-            ( TType::TextTest,            "TextTest" ),
-            ( TType::AnyKindTest,         "AnyKindTest" ),
-        ].iter().cloned().collect();
-
         let mut s = String::new();
         for token in self.tokens.iter() {
-            s += &format!("[{}] {}\n", 
-                ttype_desc.get(&token.t_type).unwrap_or(&"UNKNOWN").to_string(),
-                token.name);
+            s += &format!("[{:?}] {}\n", token.t_type, token.name);
         }
         return s;
     }
@@ -255,6 +198,18 @@ impl Lexer2 {
 
     // -----------------------------------------------------------------
     //
+    pub fn mark_token_index(&mut self) {
+        self.mark_index = self.index;
+    }
+
+    // -----------------------------------------------------------------
+    //
+    pub fn restore_marked_index(&mut self) {
+        self.index = self.mark_index;
+    }
+
+    // -----------------------------------------------------------------
+    //
     pub fn around_tokens(&self) -> String {
         let min_index = if self.index <= 3 { 1 } else { self.index - 3 };
         let max_index = (self.tokens.len() - 1).min(self.index + 3);
@@ -281,149 +236,352 @@ impl Lexer2 {
 
     // -----------------------------------------------------------------
     //
-    pub fn new(xpath_string: &String) -> Result<Lexer2, Box<Error>> {
-        let mut lexer = Lexer2 {
+    pub fn new(xpath_string: &String) -> Result<Lexer, Box<Error>> {
+        let mut lexer = Lexer {
             char_vec: xpath_string.chars().collect(),
+            ch_index: 0,
             tokens: vec!{},
-            index: 0,
+            index: 1,
+            mark_index: 1,
         };
 
+        // -------------------------------------------------------------
+        // 字句を切り出して順に登録する。
+        // この時点では、名前の分類が未確定 (InnerNameのまま)。
+        // 先頭と末尾に番兵としてEOFを入れておく。
+        //
         lexer.push_token(TType::EOF, "");
-        lexer.collect_tokens()?;
-
+        loop {
+            lexer.skip_spaces();
+            let tok = lexer.get_tok()?;
+            if tok.t_type == TType::EOF {
+                break;
+            }
+            if tok.t_type == TType::Nop {
+                continue;
+            }
+            lexer.tokens.push(tok);
+        }
+        lexer.push_token(TType::EOF, "");
         lexer.index = 1;
 
-        let mut i = 1;
-        while lexer.tokens[i].t_type != TType::EOF {
-            match lexer.tokens[i].t_type {
-                TType::InnerName => {
-                    lexer.tokens[i].t_type = special_token_rule(
-                        &lexer.tokens[i], &lexer.tokens[i-1], &lexer.tokens[i+1]);
-                },
-                _ => {},
-            }
-            i += 1;
-        }
+        // -------------------------------------------------------------
+        // InnerName ":" InnerName -> InnerName と縮約
+        // BracedURILiteral InnerName -> URIQualifiedName と縮約
+        //
 
-        let mut i = lexer.tokens.len() - 1;
-        while 0 < i {
-            if lexer.tokens[i].t_type == TType::Nop {
-                lexer.tokens.remove(i as usize);
-            }
-            i -= 1;
-        }
+        // -------------------------------------------------------------
+        // 特別なトークン規則 (1)
+        // 所定の条件のとき、名前を演算子に書き替え。
+        //
+        lexer.rewrite_operator_type();
+
+        // -------------------------------------------------------------
+        // 特別なトークン規則 (2)
+        // 2語から成るトークンを縮約。縮約によって生じたNopを削除。
+        //
+        lexer.rewrite_pair_words();
+        lexer.eliminate_nops();
+
+        // -------------------------------------------------------------
+        // 特別なトークン規則 (3)
+        // 所定の条件のとき、名前を所定のトークン種に書き替え。
+        //
+        lexer.rewrite_name_and_symbol();
+
         return Ok(lexer);
     }
 
     // -----------------------------------------------------------------
     //
-    fn collect_tokens(&mut self) -> Result<(), Box<Error>> {
-        loop {
-            self.skip_spaces();
-            let ch1 = self.read_rune();
+    fn get_tok(&mut self) -> Result<Token, Box<Error>> {
 
-            if is_eof(ch1) {
-                self.push_token(TType::EOF, "");
-                return Ok(());
+        if self.look_ahead_keyword("(:") == true {
+            self.skip_comment()?;
+            return Ok(new_token(TType::Nop, ""));
+        }
 
-            } else if is_name_start_char(ch1) {
-                let mut name = String::new();
-                name.push(ch1);
-                loop {
-                    let ch2 = self.read_rune();
-                    if ! is_name_char(ch2) {
-                        break;
-                    }
-                    name.push(ch2);
-                }
-                self.unread_rune();
-                self.push_token(TType::InnerName, &name);
+        if self.look_ahead_keyword("Q{") == true {
+            self.unread_rune();
+            self.unread_rune();
+            let literal = self.fetch_until('}')?;
+            return Ok(new_token(TType::BracedURILiteral, &literal));
+        }
 
-            } else if ch1 == '"' || ch1 == '\'' {
-                let literal = self.fetch_string_literal(&ch1)?;
-                self.push_token(TType::StringLiteral, &literal);
+        let keywords_spec = [
+            ( "//", TType::SlashSlash ),
+            ( "/",  TType::Slash ),
+            ( "::", TType::ColonColon ),
+            ( ":=", TType::Bind ),
+            ( ":*", TType::ColonAsterisk ),
+            ( ":",  TType::Colon ),
+            ( "=>", TType::Arrow ),
+            ( "=",  TType::GeneralEQ ),
+            ( "!=", TType::GeneralNE ),
+            ( "!",  TType::OperatorMap ),
+            ( "||", TType::OperatorConcat ),
+            ( "|",  TType::Union ),
+            ( "<=", TType::GeneralLE ),
+            ( "<<", TType::NodeBefore ),
+            ( "<",  TType::GeneralLT ),
+            ( ">=", TType::GeneralGE ),
+            ( ">>", TType::NodeAfter ),
+            ( ">",  TType::GeneralGT ),
+            ( ",",  TType::Comma ),
+            ( "?",  TType::Question ),
+            ( "+",  TType::Plus ),
+            ( "-",  TType::Minus ),
+            ( "*:", TType::AsteriskColon ),
+            ( "*",  TType::Asterisk ),
+            ( "$",  TType::Dollar ),
+            ( "[",  TType::LeftBracket ),
+            ( "]",  TType::RightBracket ),
+            ( "(",  TType::LeftParen ),
+            ( ")",  TType::RightParen ),
+            ( "@",  TType::At ),
+            ( "#",  TType::Sharp ),
+            ( "{",  TType::LeftCurly ),
+            ( "}",  TType::RightCurly ),
+            ( "..", TType::DotDot ),
+        ];
 
-            } else if is_digit(ch1) {
-                self.unread_rune();
-                let literal = &self.fetch_numeric_literal()?;
-                if literal.contains("e") || literal.contains("E") {
-                    self.push_token(TType::DoubleLiteral, literal);
-                } else if literal.contains(".") {
-                    self.push_token(TType::DecimalLiteral, literal);
-                } else {
-                    self.push_token(TType::IntegerLiteral, literal);
-                }
+        for (keyword, ttype) in keywords_spec.iter() {
+            if self.look_ahead_keyword(keyword) == true {
+                return Ok(new_token(ttype.clone(), keyword));
+            }
+        }
 
-            } else if ch1 == '.' {
+        // -------------------------------------------------------------
+        //
+        let ch1 = self.read_rune();
+        if is_eof(ch1) {
+            return Ok(new_token(TType::EOF, ""));
+
+        } else if is_name_start_char(ch1) {
+            let mut name = String::new();
+            name.push(ch1);
+            loop {
                 let ch2 = self.read_rune();
-                if is_digit(ch2) {
+                if ! is_name_char(ch2) {
                     self.unread_rune();
-                    self.unread_rune();
-                    let literal = &self.fetch_numeric_literal()?;
-                    if literal.contains("e") || literal.contains("E") {
-                        self.push_token(TType::DoubleLiteral, literal);
-                    } else if literal.contains(".") {
-                        self.push_token(TType::DecimalLiteral, literal);
-                    } else {
-                        self.push_token(TType::IntegerLiteral, literal);
-                    }
-                } else if ch2 == '.' {
-                    self.push_token(TType::DotDot, "..");
-                } else {
-                    self.unread_rune();
-                    self.push_token(TType::Dot, ".");
+                    break;
                 }
+                name.push(ch2);
+            }
+            return Ok(new_token(TType::InnerName, &name));
 
-            } else if ch1 == '(' {
-                let ch2 = self.read_rune();
-                if ch2 == ':' {                 // "(:" - Comment
-                    self.skip_comment()?;
-                } else {
-                    self.unread_rune();
-                    self.push_token(TType::LeftParen, "(");
-                }
+        } else if ch1 == '"' || ch1 == '\'' {
+            let literal = self.fetch_string_literal(ch1)?;
+            return Ok(new_token(TType::StringLiteral, &literal));
 
+        } else if is_digit(ch1) {
+            self.unread_rune();
+            return self.fetch_numerics();
+
+        } else if ch1 == '.' {
+            let ch2 = self.read_rune();
+            if is_digit(ch2) {
+                self.unread_rune();
+                self.unread_rune();
+                return self.fetch_numerics();
             } else {
-                let keywords_spec = [
-                    ( "//", TType::SlashSlash ),
-                    ( "/",  TType::Slash ),
-                    ( "::", TType::ColonColon ),
-                    ( ":",  TType::Colon ),
-                    ( "=",  TType::GeneralEQ ),
-                    ( "!=", TType::GeneralNE ),
-                    ( "|",  TType::Union ),
-                    ( "<=", TType::GeneralLE ),
-                    ( "<<", TType::NodeBefore ),
-                    ( "<",  TType::GeneralLT ),
-                    ( ">=", TType::GeneralGE ),
-                    ( ">>", TType::NodeAfter ),
-                    ( ">",  TType::GeneralGT ),
-                    ( ",",  TType::Comma ),
-                    ( "?",  TType::Question ),
-                    ( "+",  TType::Plus ),
-                    ( "-",  TType::Minus ),
-                    ( "*",  TType::Asterisk ),
-                    ( "$",  TType::Dollar ),
-                    ( "[",  TType::LeftBracket ),
-                    ( "]",  TType::RightBracket ),
-                    ( ")",  TType::RightParen ),
-                    ( "@",  TType::At ),
-                ];
-                let mut found = false;
                 self.unread_rune();
-                for (keyword, ttype) in keywords_spec.iter() {
-                    if self.look_ahead_keyword(keyword) == true {
-                        self.push_token(ttype.clone(), keyword);
-                        found = true;
-                        break;
-                    }
-                }
+                return Ok(new_token(TType::Dot, "."));
+            }
 
-                if ! found {
-                    return Err(xpath_syntax_error!(
-                        "XPathを構成する字句として認識できない文字: {}", ch1));
+        } else {
+            return Err(xpath_syntax_error!(
+                    "XPathを構成する字句として認識できない文字: {}", ch1));
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 特別なトークン規則 (1)
+    // 前にトークンがあり、そのトークンが
+    //      prev_t_types
+    // のいずれでもない場合、
+    //      "and" "or" "div" "mod" その他の名前を演算子名とする。
+    // (註1) XPath 1.0 の規格には明示的に書いてない (字句構造規則なので) が、
+    //       prev_t_typesにはコロン (:) も加える必要がある。
+    // (註2) XPath 2.0 でさらにトークン種を追加した。
+    //
+    fn rewrite_operator_type(&mut self) {
+        let prev_t_types = [
+            TType::EOF,             // 前にトークンがない場合はこの状態
+            TType::At,
+            TType::ColonColon,
+            TType::LeftParen,
+            TType::LeftBracket,
+            TType::Comma,
+            TType::And,
+            TType::Or,
+            TType::Div,
+            TType::IDiv,            // (註2)
+            TType::Mod,
+            TType::Slash,
+            TType::SlashSlash,
+            TType::Union,
+            TType::Intersect,       // (註2)
+            TType::Except,          // (註2)
+            TType::InstanceOf,      // (註2)
+            TType::TreatAs,         // (註2)
+            TType::CastableAs,      // (註2)
+            TType::CastAs,          // (註2)
+            TType::Plus,
+            TType::Minus,
+            TType::ValueEQ,         // (註2)
+            TType::ValueNE,         // (註2)
+            TType::ValueGT,         // (註2)
+            TType::ValueGE,         // (註2)
+            TType::ValueLT,         // (註2)
+            TType::ValueLE,         // (註2)
+            TType::GeneralEQ,
+            TType::GeneralNE,
+            TType::GeneralGT,
+            TType::GeneralGE,
+            TType::GeneralLT,
+            TType::GeneralLE,
+            TType::IsSameNode,      // (註2)
+            TType::To,              // (註2)
+            TType::NodeBefore,      // (註2)
+            TType::NodeAfter,       // (註2)
+            TType::Asterisk,
+            TType::Colon,           // (註1)
+        ];
+
+        let operator_words: HashMap<&str, TType> = [
+            ( "and",       TType::And ),
+            ( "or",        TType::Or ),
+            ( "div",       TType::Div ),
+            ( "mod",       TType::Mod ),
+            ( "idiv",      TType::IDiv ),           // (註2)
+            ( "eq",        TType::ValueEQ ),        // (註2)
+            ( "ne",        TType::ValueNE ),        // (註2)
+            ( "lt",        TType::ValueLT ),        // (註2)
+            ( "le",        TType::ValueLE ),        // (註2)
+            ( "gt",        TType::ValueGT ),        // (註2)
+            ( "ge",        TType::ValueGE ),        // (註2)
+            ( "is",        TType::IsSameNode ),     // (註2)
+            ( "to",        TType::To ),             // (註2)
+            ( "union",     TType::Union ),          // (註2)
+            ( "intersect", TType::Intersect ),      // (註2)
+            ( "except",    TType::Except ),         // (註2)
+        ].iter().cloned().collect();
+
+        let mut i = 1;
+        while self.tokens[i].t_type != TType::EOF {
+            if ! prev_t_types.contains(&self.tokens[i-1].t_type) &&
+               self.tokens[i].t_type == TType::InnerName {
+                if let Some(op_type) = operator_words.get(self.tokens[i].name.as_str()) {
+                    self.tokens[i].t_type = op_type.clone();
                 }
             }
+            i += 1;
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 特別なトークン規則 (2)
+    // 2語から成るトークンを縮約する。
+    //
+    fn rewrite_pair_words(&mut self) {
+        let operator_pair_words: [(&str, &str, TType); 4] = [
+            ( "instance", "of", TType::InstanceOf ),
+            ( "treat",    "as", TType::TreatAs ),
+            ( "castable", "as", TType::CastableAs ),
+            ( "cast",     "as", TType::CastAs ),
+        ];
+        let mut i = 1;
+        while self.tokens[i+1].t_type != TType::EOF {
+            if self.tokens[i].t_type == TType::InnerName &&
+               self.tokens[i+1].t_type == TType::InnerName {
+                for (str1, str2, t_type) in operator_pair_words.iter() {
+                    if self.tokens[i].name.as_str() == *str1 &&
+                       self.tokens[i+1].name.as_str() == *str2 {
+                        self.tokens[i].t_type = t_type.clone();
+                        self.tokens[i+1].t_type = TType::Nop;
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 特別なトークン規則 (3)
+    // 所定の字句 (Name) について、その次のトークンが '(' などの時、
+    // 所定のトークン種に書き替える。
+    //
+    fn rewrite_name_and_symbol(&mut self) {
+        let name_and_symbol_tbl: [(&str, TType, TType); 35] = [
+            ( "array",              TType::LeftParen, TType::Array ),
+            ( "attribute",          TType::LeftParen, TType::AttributeTest ),
+            ( "comment",            TType::LeftParen, TType::CommentTest ),
+            ( "document-node",      TType::LeftParen, TType::DocumentTest ),
+            ( "element",            TType::LeftParen, TType::ElementTest ),
+            ( "empty-sequence",     TType::LeftParen, TType::EmptySequence ),
+            ( "function",           TType::LeftParen, TType::Function ),
+            ( "if",                 TType::LeftParen, TType::If ),
+            ( "item",               TType::LeftParen, TType::Item ),
+            ( "map",                TType::LeftParen, TType::Map ),
+            ( "namespace-node",     TType::LeftParen, TType::NamespaceNodeTest ),
+            ( "node",               TType::LeftParen, TType::AnyKindTest ),
+            ( "processing-instruction", TType::LeftParen, TType::PITest ),
+            ( "schema-attribute",   TType::LeftParen, TType::SchemaAttributeTest ),
+            ( "schema-element",     TType::LeftParen, TType::SchemaElementTest ),
+            ( "switch",             TType::LeftParen, TType::Switch ),
+            ( "text",               TType::LeftParen, TType::TextTest ),
+            ( "typeswitch",         TType::LeftParen, TType::TypeSwitch ),
+            ( "for",                TType::Dollar,     TType::For ),
+            ( "some",               TType::Dollar,     TType::Some ),
+            ( "every",              TType::Dollar,     TType::Every ),
+            ( "let",                TType::Dollar,     TType::Let ),
+            ( "ancestor",           TType::ColonColon, TType::AxisName ),
+            ( "ancestor-or-self",   TType::ColonColon, TType::AxisName ),
+            ( "attribute",          TType::ColonColon, TType::AxisName ),
+            ( "child",              TType::ColonColon, TType::AxisName ),
+            ( "descendant",         TType::ColonColon, TType::AxisName ),
+            ( "descendant-or-self", TType::ColonColon, TType::AxisName ),
+            ( "following",          TType::ColonColon, TType::AxisName ),
+            ( "following-sibling",  TType::ColonColon, TType::AxisName ),
+            ( "namespace",          TType::ColonColon, TType::AxisName ),
+            ( "parent",             TType::ColonColon, TType::AxisName ),
+            ( "preceding",          TType::ColonColon, TType::AxisName ),
+            ( "preceding-sibling",  TType::ColonColon, TType::AxisName ),
+            ( "self",               TType::ColonColon, TType::AxisName ),
+        ];
+//                        // "map "{"
+
+        let mut i = 1;
+        while self.tokens[i].t_type != TType::EOF {
+            if self.tokens[i].t_type == TType::InnerName {
+                for (name, next_t_type, new_t_type) in name_and_symbol_tbl.iter() {
+                    if self.tokens[i].name.as_str() == *name &&
+                       self.tokens[i+1].t_type == *next_t_type {
+                        self.tokens[i].t_type = new_t_type.clone();
+                    }
+                }
+
+                // 書き替えが起こらなかった場合はTType::Nameに書き替え
+                if self.tokens[i].t_type == TType::InnerName {
+                    self.tokens[i].t_type = TType::Name;
+                            // 次がLeftParenならばFunctionNameに書き替え?
+                }
+            }
+            i += 1;
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 縮約によって生じたNopを削除。
+    //
+    fn eliminate_nops(&mut self) {
+        let mut i = self.tokens.len() - 1;
+        while 0 < i {
+            if self.tokens[i].t_type == TType::Nop {
+                self.tokens.remove(i as usize);
+            }
+            i -= 1;
         }
     }
 
@@ -447,12 +605,26 @@ impl Lexer2 {
     }
 
     // -----------------------------------------------------------------
+    // 数値リテラルを取得し、種類に応じたトークン種を返す。
+    // [ 58] NumericLiteral ::= IntegerLiteral | DecimalLiteral | DoubleLiteral
+    // [113] IntegerLiteral ::= Digits
+    // [114] DecimalLiteral ::= ("." Digits) | (Digits "." [0-9]*)
+    // [115] DoubleLiteral  ::= (("." Digits) | (Digits ("." [0-9]*)?)) [eE] [+-]? Digits
+    // [125] Digits ::= [0-9]+
+    //
+    fn fetch_numerics(&mut self) -> Result<Token, Box<Error>> {
+        let literal = &self.fetch_numeric_literal()?;
+        if literal.contains("e") || literal.contains("E") {
+            return Ok(new_token(TType::DoubleLiteral, literal));
+        } else if literal.contains(".") {
+            return Ok(new_token(TType::DecimalLiteral, literal));
+        } else {
+            return Ok(new_token(TType::IntegerLiteral, literal));
+        }
+    }
+
+    // -----------------------------------------------------------------
     // 数値リテラルを取得する。
-    // [43] NumericLiteral ::= IntegerLiteral | DecimalLiteral | DoubleLiteral
-    // [71] IntegerLiteral ::= Digits
-    // [72] DecimalLiteral ::= ("." Digits) | (Digits "." [0-9]*)
-    // [73] DoubleLiteral  ::= (("." Digits) | (Digits ("." [0-9]*)?)) [eE] [+-]? Digits
-    // [81] Digits ::= [0-9]+
     //
     fn fetch_numeric_literal(&mut self) -> Result<String, Box<Error>> {
         let mut numeric_literal = String::new();
@@ -543,20 +715,20 @@ impl Lexer2 {
 
     // -----------------------------------------------------------------
     // 文字列リテラルを取得する。
-    // [74] StringLiteral ::= ('"' (EscapeQuot | [^"])* '"')
-    //                      | ("'" (EscapeApos | [^'])* "'")
-    // [75] EscapeQuot ::= '""'
-    // [76] EscapeApos ::= "''"
+    // [116] StringLiteral ::= ('"' (EscapeQuot | [^"])* '"')
+    //                       | ("'" (EscapeApos | [^'])* "'")
+    // [119] EscapeQuot ::= '""'
+    // [120] EscapeApos ::= "''"
     //
-    fn fetch_string_literal(&mut self, delim: &char) -> Result<String, Box<Error>> {
+    fn fetch_string_literal(&mut self, delim: char) -> Result<String, Box<Error>> {
         let mut string_literal = String::new();
         loop {
             let ch1 = self.read_rune();
             if is_eof(ch1) {
                 return Err(xpath_syntax_error!("Unexpected EOF while scanning string literal."));
-            } else if ch1 == *delim {
+            } else if ch1 == delim {
                 let ch2 = self.read_rune();
-                if ch2 == *delim {
+                if ch2 == delim {
                     string_literal.push(ch2);
                 } else {
                     self.unread_rune();
@@ -569,9 +741,28 @@ impl Lexer2 {
     }
 
     // -----------------------------------------------------------------
+    // delimまでのリテラルを取得する。
+    // [118] BracedURILiteral ::= "Q" "{" [^{}]* "}"
+    //
+    fn fetch_until(&mut self, delim: char) -> Result<String, Box<Error>> {
+        let mut literal = String::new();
+        loop {
+            let ch1 = self.read_rune();
+            if is_eof(ch1) {
+                return Err(xpath_syntax_error!("Unexpected EOF while scanning."));
+            } else if ch1 == delim {
+                literal.push(ch1);
+                return Ok(literal);
+            } else {
+                literal.push(ch1);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
     // 註釈を読み飛ばす。
-    // [77] Comment ::= "(:" (CommentContents | Comment)* ":)"
-    // [82] CommentContents ::= (Char+ - (Char* ('(:' | ':)') Char*))
+    // [121] Comment ::= "(:" (CommentContents | Comment)* ":)"
+    // [126] CommentContents ::= (Char+ - (Char* ('(:' | ':)') Char*))
     //
     fn skip_comment(&mut self) -> Result<(), Box<Error>> {
         let mut nest_level = 1;
@@ -618,11 +809,11 @@ impl Lexer2 {
     // 文字を読む。
     //
     fn read_rune(&mut self) -> char {
-        self.index += 1;
-        if self.char_vec.len() <= self.index - 1 {
+        self.ch_index += 1;
+        if self.char_vec.len() <= self.ch_index - 1 {
             return EOF;
         } else {
-            return self.char_vec[self.index - 1];
+            return self.char_vec[self.ch_index - 1];
         }
     }
 
@@ -630,182 +821,10 @@ impl Lexer2 {
     // 文字を読み戻す。
     //
     fn unread_rune(&mut self) {
-        if 0 < self.index {
-            self.index -= 1;
+        if 0 < self.ch_index {
+            self.ch_index -= 1;
         }
     }
-}
-
-// -----------------------------------------------------------------
-// 特別なトークン規則: Name、Asteriskは、次の規則により、他の型の
-//                     トークンに読み替える。
-// (1) 前にトークンがあり、そのトークンが
-//             @ :: ( [ , and or div mod * / // | + - = != < <= > >=    (☆)
-//     のいずれでもない場合、
-//       "*" は乗算演算子とする。
-//       "and" "or" "div" "mod" は演算子名とする。
-// (1x) 追加:
-//       idiv eq ne lt le gt ge is to union intersect except 
-//       // then else in return satisfies は、構文解析器での判定に委ねる。
-// (1.註) 規格には明示的に書いてない (字句構造規則なので) が、
-//        ☆にはコロン (:) も加える必要がある。
-//        そうでないと、「@ns:*」のようなXPathで、規則
-//           NameTest ::= NCName ':' '*'
-//        に現れる「*」が乗算演算子になってしまう。
-// (2) Nameについて、その次のトークンが '(' のとき、
-//     所定の字句 (例: 「node()」) であればそれに応じた
-//     トークン (AnyKindTestなど)、
-//     そうでなければNameとする。
-// (3) Nameについて、その次のトークンが '::' であれば、軸名とする。
-// (4) Name 'for' は、その次のトークンが '$' であればFor、
-//     Name 'some' は、その次のトークンが '$' であればSome、
-//     Name 'every' は、その次のトークンが '$' であればEveryとする
-//
-fn special_token_rule(tok: &Token, prev_tok: &Token, next_tok: &Token) -> TType {
-    // -------------------------------------------------------------
-    // 特別なトークン規則 (1)
-    //
-    let node_type_prev = [
-        TType::EOF,             // 前にトークンがない場合はこの状態
-        TType::At,
-        TType::ColonColon,
-        TType::LeftParen,
-        TType::LeftBracket,
-        TType::Comma,
-        TType::And,
-        TType::Or,
-        TType::Div,
-        TType::IDiv,
-        TType::Mod,
-        TType::Slash,
-        TType::SlashSlash,
-        TType::Union,
-        TType::Intersect,
-        TType::Except,
-        TType::InstanceOf,
-        TType::TreatAs,
-        TType::CastableAs,
-        TType::CastAs,
-        TType::Plus,
-        TType::Minus,
-        TType::ValueEQ,
-        TType::ValueNE,
-        TType::ValueGT,
-        TType::ValueGE,
-        TType::ValueLT,
-        TType::ValueLE,
-        TType::GeneralEQ,
-        TType::GeneralNE,
-        TType::GeneralGT,
-        TType::GeneralGE,
-        TType::GeneralLT,
-        TType::GeneralLE,
-        TType::IsSameNode,
-        TType::To,
-        TType::NodeBefore,
-        TType::NodeAfter,
-        TType::Asterisk,
-        TType::Colon,            // (1.註)
-    ];
-
-    let operator_words: HashMap<&str, TType> = [
-        ( "and",       TType::And ),
-        ( "or",        TType::Or ),
-        ( "div",       TType::Div ),
-        ( "mod",       TType::Mod ),
-        ( "idiv",      TType::IDiv ),
-        ( "eq",        TType::ValueEQ ),
-        ( "ne",        TType::ValueNE ),
-        ( "lt",        TType::ValueLT ),
-        ( "le",        TType::ValueLE ),
-        ( "gt",        TType::ValueGT ),
-        ( "ge",        TType::ValueGE ),
-        ( "is",        TType::IsSameNode ),
-        ( "to",        TType::To ),
-        ( "union",     TType::Union ),
-        ( "intersect", TType::Intersect ),
-        ( "except",    TType::Except ),
-    ].iter().cloned().collect();
-
-    if tok.t_type == TType::InnerName {
-        if ! node_type_prev.contains(&prev_tok.t_type) {
-            if let Some(ttype) = operator_words.get(&tok.name.as_str()) {
-                return ttype.clone();
-            }
-        }
-    }
-
-    // -------------------------------------------------------------
-    // 2つのトークンが組になる場合の規則
-    //
-    let operator_pair_words: [(&str, &str, TType); 4] = [
-        ( "instance", "of", TType::InstanceOf ),
-        ( "treat",    "as", TType::TreatAs ),
-        ( "castable", "as", TType::CastableAs ),
-        ( "cast",     "as", TType::CastAs ),
-    ];
-    for (str1, str2, t_type) in operator_pair_words.iter() {
-        if tok.name.as_str() == *str1 &&
-           next_tok.name.as_str() == *str2 {
-            return t_type.clone();
-        }
-        if tok.name.as_str() == *str2 {
-            return TType::Nop;
-        }
-    }
-
-    // -------------------------------------------------------------
-    // 特別なトークン規則 (2)(3)(4)
-    //
-    let token_words_p: HashMap<&str, TType> = [
-        ( "attribute",              TType::AttributeTest ),
-        ( "comment",                TType::CommentTest ),
-        ( "document-node",          TType::DocumentTest ),
-        ( "element",                TType::ElementTest ),
-        ( "empty-sequence",         TType::EmptySequence ),
-        ( "if",                     TType::If ),
-        ( "item",                   TType::Item ),
-        ( "node",                   TType::AnyKindTest ),
-        ( "processing-instruction", TType::PITest ),
-        ( "schema-attribute",       TType::SchemaAttributeTest ),
-        ( "schema-element",         TType::SchemaElementTest ),
-        ( "text",                   TType::TextTest ),
-        ( "typeswitch",             TType::TypeSwitch ),
-                    // 以上は A.3 Reserved Function Names に載っており、
-                    // 函数名としては使えないことになっている。
-                    // "typeswitch" は、XPathでは使わないが、XQueryとの
-                    // 互換性のため、予約語になっている。
-    ].iter().cloned().collect();
-    let token_words_d: HashMap<&str, TType> = [
-        ( "for",       TType::For ),
-        ( "some",      TType::Some ),
-        ( "every",     TType::Every ),
-    ].iter().cloned().collect();
-
-    if tok.t_type == TType::InnerName {
-        match next_tok.t_type {
-            TType::LeftParen => {       // (2)
-                if let Some(ttype) = token_words_p.get(&tok.name.as_str()) {
-                    return ttype.clone();
-                } else {
-                    return TType::Name;
-                }
-            },
-            TType::ColonColon => {      // (3)
-                return TType::AxisName;
-            },
-            TType::Dollar => {       // (4)
-                if let Some(ttype) = token_words_d.get(&tok.name.as_str()) {
-                    return ttype.clone();
-                }
-            },
-            _ => {
-                return TType::Name;
-            },
-        }
-    }
-
-    return TType::Name;
 }
 
 // =====================================================================

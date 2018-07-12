@@ -6,8 +6,6 @@
 //
 
 use dom::new_document;
-//use sequence::*;
-use xpath_impl::eval::xnode_dump;
 use xpath_impl::parser::compile_xpath;
 
 // -----------------------------------------------------------------
@@ -34,7 +32,7 @@ pub fn subtest_xpath(id: &str, xml: &str, check_val: bool, test_specs: &[(&str, 
         let guess = test_spec.1;
 
         if let Ok(xnode) = compile_xpath(&String::from(xpath)) {
-            print!("\n{}", xnode_dump(&xnode));
+            print!("\n{}", xnode);
         }
 
         let mut actual = String::new();
@@ -80,7 +78,7 @@ pub fn subtest_eval_xpath(id: &str, xml: &str, test_specs: &[(&str, &str)]) {
         let guess = test_spec.1;
 
         if let Ok(xnode) = compile_xpath(&String::from(xpath)) {
-            print!("\n{}", xnode_dump(&xnode));
+            print!("\n{}", xnode);
         }
 
         match base_node.eval_xpath(xpath) {

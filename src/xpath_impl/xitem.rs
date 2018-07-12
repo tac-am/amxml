@@ -15,6 +15,7 @@ use std::str::FromStr;
 
 use dom::*;
 use xmlerror::*;
+use xpath_impl::parser::*;
 
 // ---------------------------------------------------------------------
 //
@@ -54,6 +55,10 @@ fn int_to_dbl(n: i64) -> f64 {          // 代替と昇格
 //
 #[derive(Debug, PartialEq, Clone)]
 pub enum XItem {
+    XItemXNodePtr {
+        value: XNodePtr,
+            // (内部処理用) インライン函数をXItemとして扱う。
+    },
     XINode {
         value: NodePtr,
     },
@@ -113,14 +118,18 @@ pub enum XItem {
     // XINMTOKENS,
 }
 
-#[allow(dead_code)]
+pub fn new_xitem_xnodeptr(xnode: &XNodePtr) -> XItem {
+    return XItem::XItemXNodePtr {
+        value: xnode.clone(),
+    }
+}
+
 pub fn new_xitem_node(node: &NodePtr) -> XItem {
     return XItem::XINode {
         value: node.rc_clone(),
     }
 }
 
-#[allow(dead_code)]
 pub fn new_xitem_string(value: &str) -> XItem {
     return XItem::XIString{value: value.to_string()};
 }
@@ -296,6 +305,9 @@ impl fmt::Display for XItem {
                     return write!(f, "false");
                 }
             },
+            _ => {
+                return write!(f, "UNKNOWN");
+            },
         }
     }
 }
@@ -334,6 +346,15 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
+    pub fn is_item(&self) -> bool {
+        match self {
+            XItem::XItemXNodePtr{value: _} => return false,
+            _ => return true,
+        }
+    }
+
+    // -----------------------------------------------------------------
+    //
     pub fn is_numeric(&self) -> bool {
         match self {
             XItem::XIInteger{value: _} => return true,
@@ -361,7 +382,9 @@ impl XItem {
     pub fn cast_as(&self, type_name: &str) -> Result<XItem, Box<Error>> {
         match type_name {
             "string" => {
-                return Ok(new_xitem_string(&self.get_as_raw_string()));
+                if let Ok(s) = self.get_as_raw_string() {
+                    return Ok(new_xitem_string(&s));
+                }
             },
             "double" => {
                 if let Ok(d) = self.get_as_raw_double() {
@@ -391,33 +414,44 @@ impl XItem {
 
     // -----------------------------------------------------------------
     //
-    pub fn get_as_raw_string(&self) -> String {
+    pub fn get_as_raw_string(&self) -> Result<String, Box<Error>> {
         match self {
-            XItem::XINode{value} => return value.string_value(),
-            XItem::XIString{value} => return value.clone(),
-            XItem::XIInteger{value} => String::from(format!("{}", value)),
-            XItem::XIDecimal{value} => String::from(format!("{}", value)),
+            XItem::XINode{value} => {
+                return Ok(value.string_value());
+            },
+            XItem::XIString{value} => {
+                return Ok(value.clone());
+            },
+            XItem::XIInteger{value} => {
+                return Ok(String::from(format!("{}", value)));
+            },
+            XItem::XIDecimal{value} => {
+                return Ok(String::from(format!("{}", value)));
+            },
             XItem::XIDouble{value} => {
                 if value.is_nan() {
-                    return String::from("NaN");
+                    return Ok(String::from("NaN"));
                 } else if value.is_infinite() {
                     if value.signum() == 1.0 {
-                        return String::from("+Infinity");
+                        return Ok(String::from("+Infinity"));
                     } else {
-                        return String::from("-Infinity");
+                        return Ok(String::from("-Infinity"));
                     }
                 } else {
-                    return String::from(format!("{}", value));
+                    return Ok(String::from(format!("{}", value)));
                 }
             },
             XItem::XIBoolean{value} => {
                 if *value == true {
-                    return String::from("true");
+                    return Ok(String::from("true"));
                 } else {
-                    return String::from("false");
+                    return Ok(String::from("false"));
                 }
             },
+            _ => {},
         }
+        return Err(type_error!(
+                "Item {}: can't cast to string", self.to_string()));
     }
 
     // -----------------------------------------------------------------
@@ -442,7 +476,10 @@ impl XItem {
             XItem::XIBoolean{value} => {
                 return Ok(if *value == true { 1.0 } else { 0.0 });
             },
+            _ => {},
         }
+        return Err(type_error!(
+                "Item {}: can't cast to double", self.to_string()));
     }
 
     // -----------------------------------------------------------------
@@ -467,7 +504,10 @@ impl XItem {
             XItem::XIBoolean{value} => {
                 return Ok(if *value == true { 1.0 } else { 0.0 });
             },
+            _ => {},
         }
+        return Err(type_error!(
+                "Item {}: can't cast to decimal", self.to_string()));
     }
 
     // -----------------------------------------------------------------
@@ -491,8 +531,11 @@ impl XItem {
                 } else {
                     return Ok(0);
                 }
-            }
+            },
+            _ => {},
         }
+        return Err(type_error!(
+                "Item {}: can't cast to integer", self.to_string()));
     }
 
     // -----------------------------------------------------------------
@@ -528,7 +571,10 @@ impl XItem {
                     return Ok(true);
                 }
             },
-            XItem::XIBoolean{value} => return Ok(*value),
+            XItem::XIBoolean{value} => {
+                return Ok(*value);
+            },
+            _ => {},
         }
         return Err(type_error!(
                 "Item {}: can't cast to boolean", self.to_string()));

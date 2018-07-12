@@ -14,6 +14,7 @@ use xmlerror::*;
 use xpath_impl::xitem::*;
 use xpath_impl::func::*;
 use xpath_impl::oper::*;
+use xpath_impl::parser::*;
 
 // =====================================================================
 // A [sequence] is an ordered collection of zero or more items.
@@ -46,28 +47,32 @@ pub fn new_xsequence_from_node_array(node_array: &Vec<NodePtr>) -> XSequence {
     return xsequence;
 }
 
-pub fn new_singleton_node(node: &NodePtr) -> XSequence {
-    return new_singleton(&XItem::XINode{value: node.rc_clone()});
+pub fn new_singleton_xnodeptr(xnode: &XNodePtr) -> XSequence {
+    return new_singleton(&new_xitem_xnodeptr(xnode));
 }
 
-pub fn new_singleton_boolean(value: bool) -> XSequence {
-    return new_singleton(&XItem::XIBoolean{value});
+pub fn new_singleton_node(node: &NodePtr) -> XSequence {
+    return new_singleton(&new_xitem_node(node));
 }
 
 pub fn new_singleton_string(value: &str) -> XSequence {
-    return new_singleton(&XItem::XIString{value: String::from(value)});
+    return new_singleton(&new_xitem_string(value));
 }
 
 pub fn new_singleton_integer(value: i64) -> XSequence {
-    return new_singleton(&XItem::XIInteger{value});
+    return new_singleton(&new_xitem_integer(value));
 }
 
 pub fn new_singleton_decimal(value: f64) -> XSequence {
-    return new_singleton(&XItem::XIDecimal{value});
+    return new_singleton(&new_xitem_decimal(value));
 }
 
 pub fn new_singleton_double(value: f64) -> XSequence {
-    return new_singleton(&XItem::XIDouble{value});
+    return new_singleton(&new_xitem_double(value));
+}
+
+pub fn new_singleton_boolean(value: bool) -> XSequence {
+    return new_singleton(&new_xitem_boolean(value));
 }
 
 // =====================================================================
@@ -101,6 +106,19 @@ impl XSequence {
         } else {
             return Err(type_error!("This sequence must be singleton."));
         }
+    }
+
+    // -----------------------------------------------------------------
+    // シングルトンかつXNodePtrであれば、そのノードを返す。
+    //
+    pub fn get_singleton_xnodeptr(&self) -> Result<XNodePtr, Box<Error>> {
+        let item = self.get_singleton_item()?;
+        match item {
+            XItem::XItemXNodePtr{value} => return Ok(value.clone()),
+            _ => {},
+        }
+
+        return Err(type_error!("This sequence must be singleton xnodeptr."));
     }
 
     // -----------------------------------------------------------------
@@ -209,6 +227,22 @@ impl XSequence {
     //
     pub fn is_singleton(&self) -> bool {
         return self.value.len() == 1;
+    }
+
+    // -----------------------------------------------------------------
+    // シーケンスに原子型がない、すなわちノードのみであることを判定する。
+    // 空である場合もtrueを返す。
+    //
+    pub fn is_no_atom(&self) -> bool {
+        for item in self.value.iter() {
+            match item {
+                XItem::XINode{value: _} => {},
+                _ => {
+                    return false;
+                },
+            }
+        }
+        return true;
     }
 
     // -----------------------------------------------------------------

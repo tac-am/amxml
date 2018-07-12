@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::error::Error;
 use std::rc::Rc;
 
@@ -86,8 +87,8 @@ pub enum XNodeType {
     ContextItem,
     FunctionCall,
     ArgumentTop,
-    VariableReference,
-    ApplyPredicates,
+    VarRef,
+    ApplyPostfix,
     KindTest,
     DocumentTest,
     ElementTest,
@@ -97,6 +98,7 @@ pub enum XNodeType {
     PITest,
     CommentTest,
     TextTest,
+    NamespaceNodeTest,
     AnyKindTest,
     KindTestTypeName,
     EmptySequenceTest,
@@ -104,151 +106,89 @@ pub enum XNodeType {
     AtomicType,
     SingleType,
     SequenceType,
+    OperatorConcat,
+    OperatorMap,
+    LetExpr,
+    LetVarBind,
+    InlineFunction,
+    Param,
+    ReturnType,
+    ArgumentListTop,
+    NamedFunctionRef,
 }
 
-impl XNodeType {
-    pub fn to_string(&self) -> String {
-        let xnode_desc: HashMap<XNodeType, &str> = [
-            ( XNodeType::Nil,                  "Nil" ),
-            ( XNodeType::OperatorPath,         "OperatorPath" ),
-            ( XNodeType::AxisRoot,             "AxisRoot" ),
-            ( XNodeType::AxisAncestor,         "AxisAncestor" ),
-            ( XNodeType::AxisAncestorOrSelf,   "AxisAncestorOrSelf" ),
-            ( XNodeType::AxisAttribute,        "AxisAttribute" ),
-            ( XNodeType::AxisChild,            "AxisChild" ),
-            ( XNodeType::AxisDescendant,       "AxisDescendant" ),
-            ( XNodeType::AxisDescendantOrSelf, "AxisDescendantOrSelf" ),
-            ( XNodeType::AxisFollowing,        "AxisFollowing" ),
-            ( XNodeType::AxisFollowingSibling, "AxisFollowingSibling" ),
-            ( XNodeType::AxisNamespace,        "AxisNamespace" ),
-            ( XNodeType::AxisParent,           "AxisParent" ),
-            ( XNodeType::AxisPreceding,        "AxisPreceding" ),
-            ( XNodeType::AxisPrecedingSibling, "AxisPrecedingSibling" ),
-            ( XNodeType::AxisSelf,             "AxisSelf" ),
-            ( XNodeType::PredicateTop,         "PredicateTop" ),
-            ( XNodeType::PredicateRevTop,      "PredicateRevTop" ),
-            ( XNodeType::OperatorConcatenate,  "OperatorConcatenate" ),
-            ( XNodeType::OperatorOr,           "OperatorOr" ),
-            ( XNodeType::OperatorAnd,          "OperatorAnd" ),
-            ( XNodeType::OperatorGeneralEQ,    "OperatorGeneralEQ" ),
-            ( XNodeType::OperatorGeneralNE,    "OperatorGeneralNE" ),
-            ( XNodeType::OperatorGeneralLT,    "OperatorGeneralLT" ),
-            ( XNodeType::OperatorGeneralGT,    "OperatorGeneralGT" ),
-            ( XNodeType::OperatorGeneralLE,    "OperatorGeneralLE" ),
-            ( XNodeType::OperatorGeneralGE,    "OperatorGeneralGE" ),
-            ( XNodeType::OperatorValueEQ,      "OperatorValueEQ" ),
-            ( XNodeType::OperatorValueNE,      "OperatorValueNE" ),
-            ( XNodeType::OperatorValueLT,      "OperatorValueLT" ),
-            ( XNodeType::OperatorValueGT,      "OperatorValueGT" ),
-            ( XNodeType::OperatorValueLE,      "OperatorValueLE" ),
-            ( XNodeType::OperatorValueGE,      "OperatorValueGE" ),
-            ( XNodeType::OperatorAdd,          "OperatorAdd" ),
-            ( XNodeType::OperatorSubtract,     "OperatorSubtract" ),
-            ( XNodeType::OperatorUnaryMinus,   "OperatorUnaryMinus" ),
-            ( XNodeType::OperatorMultiply,     "OperatorMultiply" ),
-            ( XNodeType::OperatorDiv,          "OperatorDiv" ),
-            ( XNodeType::OperatorIDiv,         "OperatorIDiv" ),
-            ( XNodeType::OperatorMod,          "OperatorMod" ),
-            ( XNodeType::OperatorUnion,        "OperatorUnion" ),
-            ( XNodeType::OperatorIntersect,    "OperatorIntersect" ),
-            ( XNodeType::OperatorExcept,       "OperatorExcept" ),
-            ( XNodeType::OperatorTo,           "OperatorTo" ),
-            ( XNodeType::OperatorIsSameNode,   "OperatorIsSameNode" ),
-            ( XNodeType::OperatorNodeBefore,   "OperatorNodeBefore" ),
-            ( XNodeType::OperatorNodeAfter,    "OperatorNodeAfter" ),
-            ( XNodeType::OperatorInstanceOf,   "OperatorInstanceOf" ),
-            ( XNodeType::OperatorTreatAs,      "OperatorTreatAs" ),
-            ( XNodeType::OperatorCastableAs,   "OperatorCastableAs" ),
-            ( XNodeType::OperatorCastAs,       "OperatorCastAs" ),
-            ( XNodeType::IfExpr,               "IfExpr" ),
-            ( XNodeType::IfThenElse,           "IfThenElse" ),
-            ( XNodeType::ForExpr,              "ForExpr" ),
-            ( XNodeType::SomeExpr,             "SomeExpr" ),
-            ( XNodeType::EveryExpr,            "EveryExpr" ),
-            ( XNodeType::ForVarBind,           "ForVarBind" ),
-            ( XNodeType::SomeVarBind,          "SomeVarBind" ),
-            ( XNodeType::EveryVarBind,         "EveryVarBind" ),
-            ( XNodeType::StringLiteral,        "StringLiteral" ),
-            ( XNodeType::IntegerLiteral,       "IntegerLiteral" ),
-            ( XNodeType::DecimalLiteral,       "DecimalLiteral" ),
-            ( XNodeType::DoubleLiteral,        "DoubleLiteral" ),
-            ( XNodeType::ContextItem,          "ContextItem" ),
-            ( XNodeType::FunctionCall,         "FunctionCall" ),
-            ( XNodeType::ArgumentTop,          "ArgumentTop" ),
-            ( XNodeType::VariableReference,    "VariableReference" ),
-            ( XNodeType::ApplyPredicates,      "ApplyPredicates" ),
-            ( XNodeType::KindTest,             "KindTest" ),
-            ( XNodeType::DocumentTest,         "DocumentTest" ),
-            ( XNodeType::ElementTest,          "ElementTest" ),
-            ( XNodeType::AttributeTest,        "AttributeTest" ),
-            ( XNodeType::SchemaElementTest,    "SchemaElementTest" ),
-            ( XNodeType::SchemaAttributeTest,  "SchemaAttributeTest" ),
-            ( XNodeType::PITest,               "PITest" ),
-            ( XNodeType::CommentTest,          "CommentTest" ),
-            ( XNodeType::TextTest,             "TextTest" ),
-            ( XNodeType::AnyKindTest,          "AnyKindTest" ),
-            ( XNodeType::KindTestTypeName,     "KindTestTypeName" ),
-            ( XNodeType::EmptySequenceTest,    "EmptySequenceTest" ),
-            ( XNodeType::ItemTest,             "ItemTest" ),
-            ( XNodeType::AtomicType,           "AtomicType" ),
-            ( XNodeType::SingleType,           "SingleType" ),
-            ( XNodeType::SequenceType,         "SequenceType" ),
-        ].iter().cloned().collect();
-
-        return xnode_desc.get(&self).unwrap_or(&"UNKNOWN").to_string();
+// =====================================================================
+//
+impl fmt::Display for XNodeType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(f, "{:?}", self);
     }
 }
 
 // =====================================================================
 //
-pub type XNodePtr = Rc<RefCell<XNode>>;
+#[derive(Eq, PartialEq, Clone)]
+pub struct XNodePtr {
+    xnode_ptr: Rc<RefCell<XNode>>,
+}
 
-pub struct XNode {
+#[derive(Eq, PartialEq, Clone)]
+struct XNode {
     n_type: XNodeType,
     name: String,
     left: Option<XNodePtr>,
     right: Option<XNodePtr>,
 }
 
-// ---------------------------------------------------------------------
-// 軸を表すノード型
+// =====================================================================
 //
-pub fn is_xnode_axis(n_type: &XNodeType) -> bool {
-    return [
-        XNodeType::AxisRoot,
-        XNodeType::AxisAncestor,
-        XNodeType::AxisAncestorOrSelf,
-        XNodeType::AxisAttribute,
-        XNodeType::AxisChild,
-        XNodeType::AxisDescendant,
-        XNodeType::AxisDescendantOrSelf,
-        XNodeType::AxisFollowing,
-        XNodeType::AxisFollowingSibling,
-        XNodeType::AxisNamespace,
-        XNodeType::AxisParent,
-        XNodeType::AxisPreceding,
-        XNodeType::AxisPrecedingSibling,
-        XNodeType::AxisSelf,
-    ].contains(n_type);
+impl fmt::Debug for XNodePtr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(f, "{}", xnode_dump(self));
+    }
+}
+
+// =====================================================================
+//
+impl fmt::Display for XNodePtr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(f, "{:?}", self);
+    }
 }
 
 // ---------------------------------------------------------------------
-// 逆順軸を表すノード型
 //
-fn is_xnode_reverse_axis(n_type: &XNodeType) -> bool {
-    return [
-        XNodeType::AxisParent,              // XPath 1.0 では正順
-        XNodeType::AxisAncestor,
-        XNodeType::AxisAncestorOrSelf,
-        XNodeType::AxisPreceding,
-        XNodeType::AxisPrecedingSibling,
-    ].contains(n_type);
+fn xnode_dump(xnode: &XNodePtr) -> String {
+    return xnode_dump_sub(xnode, 0, 4, "T");
 }
+
+// ---------------------------------------------------------------------
+//
+fn xnode_dump_sub(xnode: &XNodePtr, indent: usize, step: usize, pref: &str) -> String {
+    let mut buf: String = format!("{}{} [{}] {}\n",
+            &" ".repeat(indent),
+            pref,
+            get_xnode_type(xnode),
+            &get_xnode_name(&xnode));
+    let xl = get_left(xnode);
+    if ! is_nil_xnode(&xl) {
+        buf += &xnode_dump_sub(&xl, indent + step, step, "L");
+    }
+    let xr = get_right(xnode);
+    if ! is_nil_xnode(&xr) {
+        buf += &xnode_dump_sub(&xr, indent + step, step, "R");
+    }
+    return buf;
+}
+
+// =====================================================================
+// 構文解析用の補助マクロ。
+//
 
 // ---------------------------------------------------------------------
 // 次にトークン $ttype が現れることを確認し、そうでなければエラーとする。
 //
-macro_rules! must_next_token {
+macro_rules! error_if_not_ttype {
     ( $lex: expr, $ttype: expr, $msg: expr ) => {
         if $lex.next_token().get_type() != $ttype {
             return Err(xpath_syntax_error!($msg,
@@ -261,10 +201,10 @@ macro_rules! must_next_token {
 // 次にトークン Name が現れ、その名前が $name であることを確認し、
 // そうでなければエラーとする。
 //      字句解析器ではキーワードか否か判断できないトークン
-//          then else in return satisfies
+//          then else in return satisfies as
 //      については、TType::Nameとして返される。
 //
-macro_rules! must_next_name {
+macro_rules! error_if_not_name {
     ( $lex: expr, $name: expr, $msg: expr ) => {
         if $lex.next_token().get_type() != TType::Name &&
            $lex.next_token().get_name() != $name {
@@ -277,7 +217,7 @@ macro_rules! must_next_name {
 // ---------------------------------------------------------------------
 // 次にトークン $ttype が現れるかどうか調べ、そうでなければ nil を返す。
 //
-macro_rules! check_next_token {
+macro_rules! return_nil_if_not_ttype {
     ( $lex: expr, $ttype: expr ) => {
         if $lex.next_token().get_type() != $ttype {
             return Ok(new_nil_xnode());
@@ -325,41 +265,41 @@ macro_rules! error_if_nil {
 // [PARSE]
 //
 pub fn compile_xpath(xpath: &String) -> Result<XNodePtr, Box<Error>> {
-    let mut lex = Lexer2::new(xpath)?;
+    let mut lex = Lexer::new(xpath)?;
 
     return parse_main(&mut lex);
 }
 
 // ---------------------------------------------------------------------
-// [ 1] XPath ::= Expr
+// [  1] XPath ::= Expr
 //
-fn parse_main(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_main(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_expr(lex)?;
 
-    must_next_token!(lex, TType::EOF, "{}: 余分な字句が継続。");
+    error_if_not_ttype!(lex, TType::EOF, "{}: 余分な字句が継続。");
 
     return Ok(xnode);
 }
 
 // ---------------------------------------------------------------------
-// [28] AxisStep ::= (ReverseStep | ForwardStep) PredicateList
-// [29] ForwardStep ::= (ForwardAxis NodeTest) | AbbrevForwardStep
-// [30] ForwardAxis ::= ("child" "::")
-//                    | ("descendant" "::")
-//                    | ("attribute" "::")
-//                    | ("self" "::")
-//                    | ("descendant-or-self" "::")
-//                    | ("following-sibling" "::")
-//                    | ("following" "::")
-//                    | ("namespace" "::")
-// [31] AbbrevForwardStep ::= "@"? NodeTest
-// [32] ReverseStep ::= (ReverseAxis NodeTest) | AbbrevReverseStep
-// [33] ReverseAxis ::= ("parent" "::")
-//                    | ("ancestor" "::")
-//                    | ("preceding-sibling" "::")
-//                    | ("preceding" "::")
-//                    | ("ancestor-or-self" "::")
-// [34] AbbrevReverseStep ::= ".."
+// [ 39] AxisStep ::= (ReverseStep | ForwardStep) PredicateList
+// [ 40] ForwardStep ::= (ForwardAxis NodeTest) | AbbrevForwardStep
+// [ 41] ForwardAxis ::= ("child" "::")
+//                     | ("descendant" "::")
+//                     | ("attribute" "::")
+//                     | ("self" "::")
+//                     | ("descendant-or-self" "::")
+//                     | ("following-sibling" "::")
+//                     | ("following" "::")
+//                     | ("namespace" "::")
+// [ 42] AbbrevForwardStep ::= "@"? NodeTest
+// [ 43] ReverseStep ::= (ReverseAxis NodeTest) | AbbrevReverseStep
+// [ 44] ReverseAxis ::= ("parent" "::")
+//                     | ("ancestor" "::")
+//                     | ("preceding-sibling" "::")
+//                     | ("preceding" "::")
+//                     | ("ancestor-or-self" "::")
+// [ 45] AbbrevReverseStep ::= ".."
 //
 //    AxisXXXX  --- (predicates)...
 //   (NameTest)
@@ -371,7 +311,7 @@ fn parse_main(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 // AxisXXXXにKindTestがある場合: leftにXNode (n_type = KindTest) をつなげる。
 //
 //
-fn parse_axis_step(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_axis_step(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let axis_tbl: HashMap<&str, XNodeType> = [
         ( "ancestor",           XNodeType::AxisAncestor ),
         ( "ancestor-or-self",   XNodeType::AxisAncestorOrSelf ),
@@ -393,7 +333,7 @@ fn parse_axis_step(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         TType::AxisName => {
             lex.get_token();
 
-            must_next_token!(lex, TType::ColonColon, "{}: 軸名の次に :: が必要。");
+            error_if_not_ttype!(lex, TType::ColonColon, "{}: 軸名の次に :: が必要。");
                     // 字句解析器が正しければ、ColonColonしか現れないはず。
             lex.get_token();
 
@@ -410,31 +350,32 @@ fn parse_axis_step(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
                     "{}: namespace 軸は未実装。",
                     lex.around_tokens().as_str()));
             }
-            return parse_axis_step_sub(lex, axis);
+            return parse_node_test(lex, axis);
         },
         TType::At => {  // 「@」は「attribute::」の省略形
             lex.get_token();
-            return parse_axis_step_sub(lex, &XNodeType::AxisAttribute);
+            return parse_node_test(lex, &XNodeType::AxisAttribute);
         },
         TType::DotDot => {// 「..」は「parent::node()」の省略形
             lex.get_token();
             return Ok(new_xnode(XNodeType::AxisParent, "node()"));
         },
         _ => {  // 「空」は「child::」の省略形
-            return parse_axis_step_sub(lex, &XNodeType::AxisChild);
+            return parse_node_test(lex, &XNodeType::AxisChild);
         },
     }
 }
 
 // ---------------------------------------------------------------------
-// [35] NodeTest ::= KindTest | NameTest
-// [36] NameTest ::= QName | Wildcard
-// [37] Wildcard ::= "*"
-//                 | (NCName ":" "*")
-//                 | ("*" ":" NCName)
+// [ 46] NodeTest ::= KindTest | NameTest
+// [ 47] NameTest ::= EQName | Wildcard
 //
-fn parse_axis_step_sub(lex: &mut Lexer2, axis_type: &XNodeType) -> Result<XNodePtr, Box<Error>> {
-    let name = parse_qname_or_wildcard(lex)?;
+fn parse_node_test(lex: &mut Lexer, axis_type: &XNodeType) -> Result<XNodePtr, Box<Error>> {
+    let mut name = parse_wildcard(lex)?;
+    if name == "" {
+        name = parse_eqname(lex)?;
+    }
+
     if name != "" {                             // NameTestがあった場合
         let axis_xnode = new_xnode(axis_type.clone(), name.as_str());
         let predicates_xnode = parse_predicate_list(
@@ -457,15 +398,30 @@ fn parse_axis_step_sub(lex: &mut Lexer2, axis_type: &XNodeType) -> Result<XNodeP
 }
 
 // ---------------------------------------------------------------------
-// [54] KindTest ::= DocumentTest
-//                 | ElementTest
-//                 | AttributeTest
-//                 | SchemaElementTest
-//                 | SchemaAttributeTest
-//                 | PITest
-//                 | CommentTest
-//                 | TextTest
-//                 | AnyKindTest
+// 逆順軸を表すノード型
+//
+fn is_xnode_reverse_axis(n_type: &XNodeType) -> bool {
+    return [
+        XNodeType::AxisParent,              // XPath 1.0 では正順
+        XNodeType::AxisAncestor,
+        XNodeType::AxisAncestorOrSelf,
+        XNodeType::AxisPreceding,
+        XNodeType::AxisPrecedingSibling,
+    ].contains(n_type);
+}
+
+// ---------------------------------------------------------------------
+// [ 83] KindTest ::= DocumentTest                                     ☆
+//                  | ElementTest
+//                  | AttributeTest
+//                  | SchemaElementTest                                ☆
+//                  | SchemaAttributeTest                              ☆
+//                  | PITest
+//                  | CommentTest
+//                  | TextTest
+//                  | NamespaceNodeTest                                ☆
+//                  | AnyKindTest
+//
 //
 //     KindTest        KindTest      KindTest    etc.
 //         |              |             |
@@ -474,7 +430,7 @@ fn parse_axis_step_sub(lex: &mut Lexer2, axis_type: &XNodeType) -> Result<XNodeP
 //         |              |
 //       .....          .....
 //
-fn parse_kind_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_kind_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     let mut xnode = parse_document_test(lex)?;
     if is_nil_xnode(&xnode) {
@@ -499,6 +455,9 @@ fn parse_kind_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         xnode = parse_text_test(lex)?;
     }
     if is_nil_xnode(&xnode) {
+        xnode = parse_namespace_node_test(lex)?;
+    }
+    if is_nil_xnode(&xnode) {
         xnode = parse_any_kind_test(lex)?;
     }
 
@@ -513,12 +472,12 @@ fn parse_kind_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 
 // ---------------------------------------------------------------------
 // (当面、構文解析のみ)
-// [56] DocumentTest ::= "document-node" "(" (ElementTest | SchemaElementTest)? ")"
+// [ 85] DocumentTest ::= "document-node" "(" (ElementTest | SchemaElementTest)? ")"
 //
-fn parse_document_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    check_next_token!(lex, TType::DocumentTest);
+fn parse_document_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::DocumentTest);
     lex.get_token();
-    must_next_token!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
     lex.get_token();
 
     // s_xnode: (ElementTest | SchemaElementTest)?
@@ -527,7 +486,7 @@ fn parse_document_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         s_xnode = parse_schema_element_test(lex)?;
     }
 
-    must_next_token!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
     lex.get_token();
 
     let document_test_xnode = new_xnode(XNodeType::DocumentTest, "");
@@ -539,10 +498,11 @@ fn parse_document_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 
 
 // ---------------------------------------------------------------------
-// [64] ElementTest ::= "element" "(" (ElementNameOrWildcard ("," TypeName "?"?)?)? ")"
-// [65] ElementNameOrWildcard ::= ElementName | "*"
-// [69] ElementName ::= QName
-// [70] TypeName ::= QName
+// [ 94] ElementTest ::= "element" "(" (ElementNameOrWildcard ("," TypeName "?"?)?)? ")"
+// [ 95] ElementNameOrWildcard ::= ElementName | "*"
+// [ 99] ElementName ::= EQName
+//                              ☆ EQNameを取得するようになっていない
+// [101] TypeName ::= EQName
 //
 //     ElementTest
 //    (element-name)
@@ -550,10 +510,10 @@ fn parse_document_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 //   KindTestTypeName
 //      (type-name)
 //
-fn parse_element_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    check_next_token!(lex, TType::ElementTest);
+fn parse_element_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::ElementTest);
     lex.get_token();
-    must_next_token!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
     lex.get_token();
 
     let tok = lex.next_token();
@@ -567,7 +527,7 @@ fn parse_element_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
             match tok2.get_type() {
                 TType::Comma => {
                     lex.get_token();
-                    must_next_token!(lex, TType::Name, "{}: 型名が必要。");
+                    error_if_not_ttype!(lex, TType::Name, "{}: 型名が必要。");
                     arg_type_name = lex.get_token().get_name().to_string();
                     let tok4 = lex.next_token();
                     if tok4.get_type() == TType::Question {
@@ -581,7 +541,7 @@ fn parse_element_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         _ => {},
     }
 
-    must_next_token!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
     lex.get_token();
 
     let element_test_xnode = new_xnode(XNodeType::ElementTest, arg);
@@ -595,15 +555,16 @@ fn parse_element_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [60] AttributeTest ::= "attribute" "(" (AttribNameOrWildcard ("," TypeName)?)? ")"
-// [61] AttribNameOrWildcard ::= AttributeName | "*"
-// [68] AttributeName ::= QName
-// [70] TypeName ::= QName
+// [ 90] AttributeTest ::= "attribute" "(" (AttribNameOrWildcard ("," TypeName)?)? ")"
+// [ 91] AttribNameOrWildcard ::= AttributeName | "*"
+// [ 98] AttributeName ::= EQName
+//                              ☆ EQNameを取得するようになっていない
+// [101] TypeName ::= EQName
 //
-fn parse_attribute_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    check_next_token!(lex, TType::AttributeTest);
+fn parse_attribute_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::AttributeTest);
     lex.get_token();
-    must_next_token!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
     lex.get_token();
 
     let tok = lex.next_token();
@@ -617,7 +578,7 @@ fn parse_attribute_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
             match tok2.get_type() {
                 TType::Comma => {
                     lex.get_token();
-                    must_next_token!(lex, TType::Name, "{}: 型名が必要。");
+                    error_if_not_ttype!(lex, TType::Name, "{}: 型名が必要。");
                     arg_type_name = lex.get_token().get_name().to_string();
                 },
                 TType::RightParen => {},
@@ -631,7 +592,7 @@ fn parse_attribute_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         _ => {},
     }
 
-    must_next_token!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
     lex.get_token();
 
     let attribute_test_xnode = new_xnode(XNodeType::AttributeTest, arg);
@@ -646,54 +607,55 @@ fn parse_attribute_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 
 // ---------------------------------------------------------------------
 // (当面、構文解析のみ)
-// [66] SchemaElementTest ::= "schema-element" "(" ElementDeclaration ")"
-// [67] ElementDeclaration ::= ElementName
-// [69] ElementName ::= QName
+// [ 96] SchemaElementTest ::= "schema-element" "(" ElementDeclaration ")"
+// [ 97] ElementDeclaration ::= ElementName
+// [ 99] ElementName ::= EQName
 //
-fn parse_schema_element_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_schema_element_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     return parse_kind_test_sub_one(lex,
                 TType::SchemaElementTest, XNodeType::SchemaElementTest);
 }
 
 // ---------------------------------------------------------------------
 // (当面、構文解析のみ)
-// [62] SchemaAttributeTest ::= "schema-attribute" "(" AttributeDeclaration ")"
-// [63] AttributeDeclaration ::= AttributeName
-// [68] AttributeName ::= QName
+// [ 92] SchemaAttributeTest ::= "schema-attribute" "(" AttributeDeclaration ")"
+// [ 93] AttributeDeclaration ::= AttributeName
+// [ 98] AttributeName ::= EQName
 //
-fn parse_schema_attribute_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_schema_attribute_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     return parse_kind_test_sub_one(lex,
                 TType::SchemaAttributeTest, XNodeType::SchemaAttributeTest);
 }
 
 // ---------------------------------------------------------------------
 // SchemaElementTest | SchemaAttributeTest に共通:
-// テスト名 (ttype) の後に、"(" QName ")" が続いているとき、
+// テスト名 (ttype) の後に、"(" EQName ")" が続いているとき、
 // xnode (XNodeType: xnode_type) を生成して返す。
+//                              ☆ EQNameを取得するようになっていない
 //
-fn parse_kind_test_sub_one(lex: &mut Lexer2,
+fn parse_kind_test_sub_one(lex: &mut Lexer,
         ttype: TType, xnode_type: XNodeType)
                                     -> Result<XNodePtr, Box<Error>> {
 
-    check_next_token!(lex, ttype);
+    return_nil_if_not_ttype!(lex, ttype);
     lex.get_token();
-    must_next_token!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
     lex.get_token();
-    must_next_token!(lex, TType::Name, "{}: 名前が必要。");
+    error_if_not_ttype!(lex, TType::Name, "{}: 名前が必要。");
     let tok = lex.get_token();
-    must_next_token!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
     lex.get_token();
 
     return Ok(new_xnode(xnode_type, tok.get_name()));
 }
 
 // ---------------------------------------------------------------------
-// [59] PITest ::= "processing-instruction" "(" (NCName | StringLiteral)? ")"
+// [ 89] PITest ::= "processing-instruction" "(" (NCName | StringLiteral)? ")"
 //
-fn parse_pi_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    check_next_token!(lex, TType::PITest);
+fn parse_pi_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::PITest);
     lex.get_token();
-    must_next_token!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
     lex.get_token();
 
     let tok = lex.next_token();
@@ -711,60 +673,67 @@ fn parse_pi_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         },
     }
 
-    must_next_token!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
     lex.get_token();
 
     return Ok(new_xnode(XNodeType::PITest, arg));
 }
 
 // ---------------------------------------------------------------------
-// [58] CommentTest ::= "comment" "(" ")"
+// [ 87] CommentTest ::= "comment" "(" ")"
 //
-fn parse_comment_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_comment_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     return parse_kind_test_sub_none(lex,
                 TType::CommentTest, XNodeType::CommentTest);
 }
 
 // ---------------------------------------------------------------------
-// [57] TextTest ::= "text" "(" ")"
+// [ 86] TextTest ::= "text" "(" ")"
 //
-fn parse_text_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_text_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     return parse_kind_test_sub_none(lex,
                 TType::TextTest, XNodeType::TextTest);
 }
 
 // ---------------------------------------------------------------------
-// [55] AnyKindTest ::= "node" "(" ")"
+// (当面、構文解析のみ)
+// [ 88] NamespaceNodeTest ::= "namespace-node" "(" ")"                ☆
 //
-fn parse_any_kind_test(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_namespace_node_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return parse_kind_test_sub_none(lex,
+                TType::NamespaceNodeTest, XNodeType::NamespaceNodeTest);
+}
+
+// ---------------------------------------------------------------------
+// [ 84] AnyKindTest ::= "node" "(" ")"
+//
+fn parse_any_kind_test(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     return parse_kind_test_sub_none(lex,
                 TType::AnyKindTest, XNodeType::AnyKindTest);
 }
 
 // ---------------------------------------------------------------------
-// AnyKindTest | TextTest | CommentTest に共通。
+// AnyKindTest | TextTest | NamespaceNodeTest | CommentTest に共通。
 // また、SequenceTypeの「empty-sequence()」、ItemType の「item()」にも共通。
 // テスト名 (ttype) の後に、引数なしで "(" ")" が続いているとき、
 // xnode (XNodeType: xnode_type) を生成して返す。
 //
-fn parse_kind_test_sub_none(lex: &mut Lexer2,
+fn parse_kind_test_sub_none(lex: &mut Lexer,
         ttype: TType, xnode_type: XNodeType)
                                     -> Result<XNodePtr, Box<Error>> {
 
-    check_next_token!(lex, ttype);
+    return_nil_if_not_ttype!(lex, ttype);
     lex.get_token();
-    must_next_token!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 開き括弧が必要。");
     lex.get_token();
-    must_next_token!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 閉じ括弧が必要。");
     lex.get_token();
 
     return Ok(new_xnode(xnode_type, ""));
 }
 
 // ---------------------------------------------------------------------
-// [39] PredicateList ::= Predicate*
-//  ->  PredicateList ::= (empty)
-//                      | Predicate PredicateList
+// [ 51] PredicateList ::= Predicate*
 //
 // Predicate{Rev}Top --- Predicate{Rev}Top ---...
 //        |                     |
@@ -772,7 +741,9 @@ fn parse_kind_test_sub_none(lex: &mut Lexer2,
 //        |
 //      (Expr)
 //
-fn parse_predicate_list(lex: &mut Lexer2, reverse_order: bool) -> Result<XNodePtr, Box<Error>> {
+//          Predicateが0個の場合はNilを返す。
+//
+fn parse_predicate_list(lex: &mut Lexer, reverse_order: bool) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_predicate(lex)?;
     return_if_nil!(xnode);
 
@@ -791,35 +762,35 @@ fn parse_predicate_list(lex: &mut Lexer2, reverse_order: bool) -> Result<XNodePt
 }
 
 // ---------------------------------------------------------------------
-// [40] Predicate ::= "[" Expr "]"
+// [ 52] Predicate ::= "[" Expr "]"
 //
-fn parse_predicate(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_predicate(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    check_next_token!(lex, TType::LeftBracket);
+    return_nil_if_not_ttype!(lex, TType::LeftBracket);
     lex.get_token();
 
     let xnode = parse_expr(lex)?;
 
-    must_next_token!(lex, TType::RightBracket, "{}: 述語を閉じる「]」が必要。");
+    error_if_not_ttype!(lex, TType::RightBracket, "{}: 述語を閉じる「]」が必要。");
     lex.get_token();
 
     return Ok(xnode);
 }
 
 // ---------------------------------------------------------------------
-// [ 2] Expr ::= ExprSingle ( "," ExprSingle )*
+// [  6] Expr ::= ExprSingle ( "," ExprSingle )*
 //
 //   OperatorConcatenate --- OperatorConcatenate --- nil
 //         |                       |
 //         |                    IfExpr ...
-//         |              ...
-//     OperatorOr --- ...
+//         |                      ...
+//     OperatorOr ...
 //        ...
 // 3.3.1 Constructing Sequences
 // Comma operator: evaluates each of its operands and concatenates
 // the resulting sequences, in order, into a single result sequence.
 //
-fn parse_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::Comma, XNodeType::OperatorConcatenate ),
     ].iter().cloned().collect();
@@ -828,13 +799,17 @@ fn parse_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [ 3] ExprSingle ::= ForExpr
-//                   | QuantifiedExpr
-//                   | IfExpr
-//                   | OrExpr
+// [  7] ExprSingle ::= ForExpr
+//                    | LetExpr
+//                    | QuantifiedExpr
+//                    | IfExpr
+//                    | OrExpr
 //
-fn parse_expr_single(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_expr_single(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_for_expr(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_let_expr(lex)?;
     return_if_non_nil!(xnode);
 
     let xnode = parse_quantified_expr(lex)?;
@@ -847,23 +822,26 @@ fn parse_expr_single(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [ 4] ForExpr ::= SimpleForClause "return" ExprSingle
-// [ 5] SimpleForClause ::= "for" "$" VarName "in" ExprSingle
-//                              ("," "$" VarName "in" ExprSingle)*
-// [45] VarName ::= QName
+// [  8] ForExpr ::= SimpleForClause "return" ExprSingle
+// [  9] SimpleForClause ::= "for" SimpleForBinding ("," SimpleForBinding)*
+//
+//  ForExpr --- ForVarBind ------ ForVarBind --- ... --- (ExprSingle)
+//               (変数名)          (変数名)
+//                  |                 |
+//                 ... (ExprSingle)  ... (ExprSingle)
 // 
-fn parse_for_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    check_next_token!(lex, TType::For);
+fn parse_for_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::For);
     lex.get_token();
 
-    let xnode_for_expr = new_xnode(XNodeType::ForExpr, &"for");
-    let mut curr_xnode = Rc::clone(&xnode_for_expr);
+    let for_expr_xnode = new_xnode(XNodeType::ForExpr, "for");
+    let mut curr_xnode = for_expr_xnode.clone();
     loop {
-        let xnode_var_bind = parse_var_bind(lex, &XNodeType::ForVarBind)?;
-        if is_nil_xnode(&xnode_var_bind) {
+        let var_bind_xnode = parse_simple_for_binding(lex)?;
+        if is_nil_xnode(&var_bind_xnode) {
             break;
         }
-        assign_as_right(&curr_xnode, &xnode_var_bind);
+        assign_as_right(&curr_xnode, &var_bind_xnode);
         curr_xnode = get_right(&curr_xnode);
 
         let tok = lex.next_token();
@@ -873,49 +851,50 @@ fn parse_for_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         lex.get_token();
     }
 
-    must_next_name!(lex, "return", "{}: for に対応する return が必要。");
+    error_if_not_name!(lex, "return", "{}: for に対応する return が必要。");
     lex.get_token();
 
-    let xnode_expr_single = parse_expr_single(lex)?;
-    assign_as_right(&curr_xnode, &xnode_expr_single);
-    
-    return Ok(xnode_for_expr);
+    let expr_single_xnode = parse_expr_single(lex)?;
+    assign_as_right(&curr_xnode, &expr_single_xnode);
+
+    return Ok(for_expr_xnode);
 }
 
 // ---------------------------------------------------------------------
-// [ 6] QuantifiedExpr ::= ("some" | "every")
-//                  "$" VarName "in" ExprSingle
-//                      ("," "$" VarName "in" ExprSingle)*
-//                  "satisfies" ExprSingle
-// [45] VarName ::= QName
+// [ 10] SimpleForBinding ::= "$" VarName "in" ExprSingle
+// [ 60] VarName ::= EQName
 //
-fn parse_quantified_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    let xnode_quantified_expr;
-    let xnode_type_bind;
-    let tok = lex.next_token();
-    match tok.get_type() {
-        TType::Some => {
-            lex.get_token();
-            xnode_quantified_expr = new_xnode(XNodeType::SomeExpr, &"some");
-            xnode_type_bind = XNodeType::SomeVarBind;
-        },
-        TType::Every => {
-            lex.get_token();
-            xnode_quantified_expr = new_xnode(XNodeType::EveryExpr, &"every");
-            xnode_type_bind = XNodeType::EveryVarBind;
-        },
-        _ => {
-            return Ok(new_nil_xnode());
-        },
-    }
+//  ForVarBind
+//   (変数名)
+//      |
+//     ... (ExprSingle)
+//
+fn parse_simple_for_binding(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    let mut curr_xnode = Rc::clone(&xnode_quantified_expr);
+    return parse_simple_binding(lex, &XNodeType::ForVarBind);
+}
+
+// ---------------------------------------------------------------------
+// [ 11] LetExpr ::= SimpleLetClause "return" ExprSingle
+// [ 12] SimpleLetClause ::= "let" SimpleLetBinding ("," SimpleLetBinding)*
+//
+//  LetExpr --- LetVarBind ------ LetVarBind --- ... --- (ExprSingle)
+//               (変数名)          (変数名)
+//                  |                 |
+//                 ... (ExprSingle)  ... (ExprSingle)
+// 
+fn parse_let_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::Let);
+    lex.get_token();
+
+    let let_expr_xnode = new_xnode(XNodeType::LetExpr, "let");
+    let mut curr_xnode = let_expr_xnode.clone();
     loop {
-        let xnode_var_bind = parse_var_bind(lex, &xnode_type_bind)?;
-        if is_nil_xnode(&xnode_var_bind) {
+        let var_bind_xnode = parse_simple_let_binding(lex)?;
+        if is_nil_xnode(&var_bind_xnode) {
             break;
         }
-        assign_as_right(&curr_xnode, &xnode_var_bind);
+        assign_as_right(&curr_xnode, &var_bind_xnode);
         curr_xnode = get_right(&curr_xnode);
 
         let tok = lex.next_token();
@@ -925,43 +904,138 @@ fn parse_quantified_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         lex.get_token();
     }
 
-    must_next_name!(lex, "satisfies", "{}: some/every に対応する satisfies が必要。");
+    error_if_not_name!(lex, "return", "{}: let に対応する return が必要。");
     lex.get_token();
 
-    let xnode_expr_single = parse_expr_single(lex)?;
-    assign_as_right(&curr_xnode, &xnode_expr_single);
-    
-    return Ok(xnode_quantified_expr);
+    let expr_single_xnode = parse_expr_single(lex)?;
+    assign_as_right(&curr_xnode, &expr_single_xnode);
+
+    return Ok(let_expr_xnode);
 }
 
 // ---------------------------------------------------------------------
-// "$" VarName "in" ExprSingle
-// [45] VarName ::= QName
+// [ 13] SimpleLetBinding ::= "$" VarName ":=" ExprSingle
+// [ 60] VarName ::= EQName
 //
-fn parse_var_bind(lex: &mut Lexer2, xnode_type: &XNodeType) -> Result<XNodePtr, Box<Error>> {
+//  LetVarBind
+//   (変数名)
+//      |
+//     ... (ExprSingle)
+//
+fn parse_simple_let_binding(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    check_next_token!(lex, TType::Dollar);
+    return_nil_if_not_ttype!(lex, TType::Dollar);
     lex.get_token();
 
-    let var_name = parse_qname(lex)?;
+    let var_name = parse_eqname(lex)?;
     if var_name == "" {
         return Err(xpath_syntax_error!(
                     "{}: $ の後には変数名が必要。",
                     lex.around_tokens().as_str()));
     }
 
-    must_next_name!(lex, "in", "{}: 変数名の後に in が必要。");
+    error_if_not_ttype!(lex, TType::Bind, "{}: 変数名の後に := が必要。");
     lex.get_token();
 
-    let xnode_expr_single = parse_expr_single(lex)?;
-    let xnode_for_expr = new_xnode(xnode_type.clone(), &var_name);
-    assign_as_left(&xnode_for_expr, &xnode_expr_single);
+    let expr_single_xnode = parse_expr_single(lex)?;
+    let var_bind_xnode = new_xnode(XNodeType::LetVarBind, &var_name);
+    assign_as_left(&var_bind_xnode, &expr_single_xnode);
 
-    return Ok(xnode_for_expr);
+    return Ok(var_bind_xnode);
 }
 
 // ---------------------------------------------------------------------
-// [ 7] IfExpr ::= "if" "(" Expr ")" "then" ExprSingle "else" ExprSingle
+// [ 14] QuantifiedExpr ::= ("some" | "every")
+//                  "$" VarName "in" ExprSingle
+//                      ("," "$" VarName "in" ExprSingle)*
+//                  "satisfies" ExprSingle
+//
+// 規格の記述は上のようになっているが、ForExprに準じて次のように考える。
+// [ 14a] QuantifiedExpr ::= SimpleQuantifiedClause "satisfies" ExprSingle
+// [ 14b] SimpleQuantifiedClause ::= ("some" | "every") 
+//                   SimpleQuantifiedBinding ("," SimpleQuantifiedBinding)*
+// [ 14c] SimpleQuantifiedBinding ::= "$" VarName "in" ExprSingle
+// [ 60] VarName ::= EQName
+//
+fn parse_quantified_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let quantified_expr_xnode;
+    let xnode_ttype;
+    let tok = lex.next_token();
+    match tok.get_type() {
+        TType::Some => {
+            lex.get_token();
+            quantified_expr_xnode = new_xnode(XNodeType::SomeExpr, "some");
+            xnode_ttype = XNodeType::SomeVarBind;
+        },
+        TType::Every => {
+            lex.get_token();
+            quantified_expr_xnode = new_xnode(XNodeType::EveryExpr, "every");
+            xnode_ttype = XNodeType::EveryVarBind;
+        },
+        _ => {
+            return Ok(new_nil_xnode());
+        },
+    }
+
+    let mut curr_xnode = quantified_expr_xnode.clone();
+    loop {
+        let xnode_var_bind = parse_simple_binding(lex, &xnode_ttype)?;
+        if is_nil_xnode(&xnode_var_bind) {
+            break;
+        }
+        assign_as_right(&curr_xnode, &xnode_var_bind);
+        curr_xnode = get_right(&curr_xnode);
+
+        let tok = lex.next_token();
+        if tok.get_type() != TType::Comma {
+            break;
+        }
+        lex.get_token();
+    }
+
+    error_if_not_name!(lex, "satisfies", "{}: some/every に対応する satisfies が必要。");
+    lex.get_token();
+
+    let expr_single_xnode = parse_expr_single(lex)?;
+    assign_as_right(&curr_xnode, &expr_single_xnode);
+
+    return Ok(quantified_expr_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [ 10] SimpleForBinding ::= "$" VarName "in" ExprSingle
+// [ 60] VarName ::= EQName
+// および、{Some,Every}Exprについて同様の構文。
+//
+// {For,Some,Every}VarBind
+//         (変数名)
+//            |
+//           ... (ExprSingle)
+//
+fn parse_simple_binding(lex: &mut Lexer, xnode_type: &XNodeType) -> Result<XNodePtr, Box<Error>> {
+
+    return_nil_if_not_ttype!(lex, TType::Dollar);
+    lex.get_token();
+
+    let var_name = parse_eqname(lex)?;
+    if var_name == "" {
+        return Err(xpath_syntax_error!(
+                    "{}: $ の後には変数名が必要。",
+                    lex.around_tokens().as_str()));
+    }
+
+    error_if_not_name!(lex, "in", "{}: 変数名の後に in が必要。");
+    lex.get_token();
+
+    let expr_single_xnode = parse_expr_single(lex)?;
+    let var_bind_xnode = new_xnode(xnode_type.clone(), &var_name);
+    assign_as_left(&var_bind_xnode, &expr_single_xnode);
+
+    return Ok(var_bind_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [ 15] IfExpr ::= "if" "(" Expr ")" "then" ExprSingle "else" ExprSingle
 //
 //      IfExpr --- IfThenElse --- (xnode_else)
 //         |            |
@@ -969,21 +1043,21 @@ fn parse_var_bind(lex: &mut Lexer2, xnode_type: &XNodeType) -> Result<XNodePtr, 
 //         |
 //    (xnode_cond)
 //
-fn parse_if_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_if_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    check_next_token!(lex, TType::If);
+    return_nil_if_not_ttype!(lex, TType::If);
     lex.get_token();
 
-    must_next_token!(lex, TType::LeftParen, "{}: if 文には左括弧が必要。");
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: if 文には左括弧が必要。");
     lex.get_token();
 
     let xnode_cond = parse_expr(lex)?;
     error_if_nil!(lex, xnode_cond, "{}: if文の条件式が不正。");
 
-    must_next_token!(lex, TType::RightParen, "{}: 条件式を閉じる右括弧が必要。");
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 条件式を閉じる右括弧が必要。");
     lex.get_token();
 
-    must_next_name!(lex, "then", "{}: if に対応する then が必要。");
+    error_if_not_name!(lex, "then", "{}: if に対応する then が必要。");
     lex.get_token();
 
     let xnode_then = parse_expr_single(lex)?;
@@ -992,7 +1066,7 @@ fn parse_if_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
                 "{}: if文のthen節が不正。", lex.around_tokens().as_str()));
     }
 
-    must_next_name!(lex, "else", "{}: if に対応する else が必要。");
+    error_if_not_name!(lex, "else", "{}: if に対応する else が必要。");
     lex.get_token();
 
     let xnode_else = parse_expr_single(lex)?;
@@ -1010,9 +1084,9 @@ fn parse_if_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [ 8] OrExpr ::= AndExpr ( "or" AndExpr )*
+// [ 16] OrExpr ::= AndExpr ( "or" AndExpr )*
 //
-fn parse_or_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_or_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::Or, XNodeType::OperatorOr ),
     ].iter().cloned().collect();
@@ -1021,9 +1095,9 @@ fn parse_or_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [ 9] AndExpr ::= ComparisonExpr ( "and" ComparisonExpr )*
+// [ 17] AndExpr ::= ComparisonExpr ( "and" ComparisonExpr )*
 //
-fn parse_and_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_and_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::And, XNodeType::OperatorAnd ),
     ].iter().cloned().collect();
@@ -1032,14 +1106,14 @@ fn parse_and_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [10] ComparisonExpr ::= RangeExpr ( (ValueComp
+// [ 18] ComparisonExpr ::= StringConcatExpr ( (ValueComp
 //                           | GeneralComp
-//                           | NodeComp) RangeExpr )?
-// [22] GenerapComp ::= "=" | "!=" | "<" | "<=" | ">" | ">="
-// [23] ValueComp ::= "eq" | "ne" | "lt" | "le" | "gt" | "ge"
-// [24] NodeComp ::= "is" | "<<" | ">>"
+//                           | NodeComp) StringConcatExpr )?
+// [ 33] ValueComp ::= "eq" | "ne" | "lt" | "le" | "gt" | "ge"
+// [ 32] GenerapComp ::= "=" | "!=" | "<" | "<=" | ">" | ">="
+// [ 34] NodeComp ::= "is" | "<<" | ">>"
 //
-fn parse_comparison_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_comparison_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::ValueEQ,    XNodeType::OperatorValueEQ ),
         ( TType::ValueNE,    XNodeType::OperatorValueNE ),
@@ -1058,13 +1132,24 @@ fn parse_comparison_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         ( TType::NodeAfter,  XNodeType::OperatorNodeAfter ),
     ].iter().cloned().collect();
 
-    return parse_bin_op_sub(lex, parse_range_expr, &token_node_map, true);
+    return parse_bin_op_sub(lex, parse_string_concat_expr, &token_node_map, true);
 }
 
 // ---------------------------------------------------------------------
-// [11] RangeExpr ::= AdditiveExpr ( "to" AdditiveExpr )?
+// [ 19] StringConcatExpr ::= RangeExpr ( "||" RangeExpr )*
 //
-fn parse_range_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_string_concat_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let token_node_map: HashMap<TType, XNodeType> = [
+        ( TType::OperatorConcat, XNodeType::OperatorConcat ),
+    ].iter().cloned().collect();
+
+    return parse_bin_op_sub(lex, parse_range_expr, &token_node_map, false);
+}
+
+// ---------------------------------------------------------------------
+// [ 20] RangeExpr ::= AdditiveExpr ( "to" AdditiveExpr )?
+//
+fn parse_range_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::To, XNodeType::OperatorTo ),
     ].iter().cloned().collect();
@@ -1073,10 +1158,10 @@ fn parse_range_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [12] AdditiveExpr ::= MultiplicativeExpr
+// [ 21] AdditiveExpr ::= MultiplicativeExpr
 //                         ( ( "+" | "-" ) MultiplicativeExpr )*
 //
-fn parse_additive_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_additive_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::Plus, XNodeType::OperatorAdd ),
         ( TType::Minus, XNodeType::OperatorSubtract ),
@@ -1086,10 +1171,10 @@ fn parse_additive_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [13] MultiplicativeExpr ::= UnionExpr
+// [ 22] MultiplicativeExpr ::= UnionExpr
 //                         ( ( "*" | "div" | "idiv" | "mod" ) UnionExpr )*
 //
-fn parse_multiplicative_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_multiplicative_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::Asterisk, XNodeType::OperatorMultiply ),
         ( TType::Div, XNodeType::OperatorDiv ),
@@ -1101,10 +1186,10 @@ fn parse_multiplicative_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [14] UnionExpr ::= IntersectExceptExpr
+// [ 23] UnionExpr ::= IntersectExceptExpr
 //                         ( ( "union" | "|" ) IntersectExceptExpr )*
 //
-fn parse_union_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_union_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::Union, XNodeType::OperatorUnion ),
     ].iter().cloned().collect();
@@ -1115,10 +1200,10 @@ fn parse_union_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [15] IntersectExceptExpr ::= InstanceofExpr
+// [ 24] IntersectExceptExpr ::= InstanceofExpr
 //                         ( ( "intersect" | "except" ) InstanceofExpr )*
 //
-fn parse_intersect_except_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_intersect_except_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let token_node_map: HashMap<TType, XNodeType> = [
         ( TType::Intersect, XNodeType::OperatorIntersect ),
         ( TType::Except, XNodeType::OperatorExcept ),
@@ -1128,9 +1213,9 @@ fn parse_intersect_except_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>>
 }
 
 // ---------------------------------------------------------------------
-// [16] InstanceofExpr ::= TreatExpr ( ( "instance" "of" ) SequenceType )?
+// [ 25] InstanceofExpr ::= TreatExpr ( ( "instance" "of" ) SequenceType )?
 //
-fn parse_instanceof_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_instanceof_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_treat_expr(lex)?;
     let tok = lex.next_token();
     if tok.get_type() == TType::InstanceOf {
@@ -1151,9 +1236,9 @@ fn parse_instanceof_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [17] TreatExpr ::= CastableExpr ( ( "treat" "as" ) SequenceType )?
+// [ 26] TreatExpr ::= CastableExpr ( ( "treat" "as" ) SequenceType )?
 //
-fn parse_treat_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_treat_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_castable_expr(lex)?;
     let tok = lex.next_token();
     if tok.get_type() == TType::TreatAs {
@@ -1174,9 +1259,9 @@ fn parse_treat_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [50] SequenceType ::= ("empty-sequence" "(" ")")
-//                     | (ItemType OccurrenceIndicator?)
-// [51] OccurrenceIndicator ::= "?" | "*" | "+"
+// [ 79] SequenceType ::= ("empty-sequence" "(" ")")
+//                      | (ItemType OccurenceIndicator?)
+// [ 80] OccurrenceIndicator ::= "?" | "*" | "+"
 //
 //   SequenceType            SequenceType         SequenceType
 //        |                 (? | * | + | _)      (? | * | + | _)
@@ -1184,7 +1269,7 @@ fn parse_treat_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 // EmptySequenceTest          KindTest             AtomicType
 //                              .....                .....
 //
-fn parse_sequence_type(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_sequence_type(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     let xnode = parse_kind_test_sub_none(lex,
                 TType::EmptySequence, XNodeType::EmptySequenceTest)?;
@@ -1215,30 +1300,48 @@ fn parse_sequence_type(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [52] ItemType ::= KindTest 
+// ((52)) ItemType ::= KindTest 
 //                 | ( "item" "(" ")" )
 //                 | AtomicType
-// [53] AtomicType ::= QName
+// ((53)) AtomicType ::= QName
+//
+// [ 81] ItemType ::= KindTest
+//                  | ("item" "(" ")")
+//                  | FunctionTest                                     ☆
+//                  | MapTest                                          ☆
+//                  | ArrayTest                                        ☆
+//                  | AtomicOrUnionType                               (☆)
+//                  | ParenthesizedItemType                            ☆
+// [102] FunctionTest ::= AnyFunctionTest
+//                      | TypedFunctionTest
+// [103] AnyFunctionTest ::= "function" "(" "*" ")"
+// [104] TypedFunctionTest ::= "function" "("
+//                                 SequenceType ("," SequenceType)*)? ")"
+//                                 "as" SequenceType
+// [ 82] AtomicOrUnionType ::= EQName
+// [111] ParenthesizedItemType ::= "(" ItemType ")"
+// [105] MapTest ::= AnyMapTest | TypedMapTest
+// [106] AnyMapTest ::= "map" "(" "*" ")"
+// [107] TypedMapTest ::= "map" "(" AtomicOrUnionType "," SequenceType ")"
+// [108] ArrayTest ::= AnyArrayTest | TypedArrayTest
+// [109] AnyArrayTest ::= "array" "(" "*" ")"
+// [110] TypedArrayTest ::= "array" "(" SequenceType ")"
 //
 //   KindTest             KindTest         AtomicType
 //      |                    |               (type)
 //  DocumentTestなど      ItemTest
 //    .....           (これもKindTest扱い)
 //
-fn parse_item_type(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_item_type(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_kind_test(lex)?;
-    if ! is_nil_xnode(&xnode) {
-        return Ok(xnode);
-    }
+    return_if_non_nil!(xnode);
 
     let xnode = parse_kind_test_sub_none(lex, TType::Item, XNodeType::ItemTest)?;
-    if ! is_nil_xnode(&xnode) {
-        return Ok(xnode);
-    }
+    return_if_non_nil!(xnode);
 
-    let qname = parse_qname(lex)?;
-    if qname != "" {
-        let xnode = new_xnode(XNodeType::AtomicType, &qname);
+    let eqname = parse_eqname(lex)?;
+    if eqname != "" {
+        let xnode = new_xnode(XNodeType::AtomicType, &eqname);
         return Ok(xnode);
     }
 
@@ -1246,14 +1349,14 @@ fn parse_item_type(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [18] CastableExpr ::= CastExpr ( "castable" "as" ) SingleType )?
+// [ 27] CastableExpr ::= CastExpr ( "castable" "as" ) SingleType )?
 //
 // OperatorCastableAs --- SingleType
 //       |                   |
 //   (CastExpr)          AtomicType
 //                         (type)
 //
-fn parse_castable_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_castable_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     let xnode = parse_cast_expr(lex)?;
     let tok = lex.next_token();
@@ -1275,16 +1378,16 @@ fn parse_castable_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [19] CastExpr ::= UnaryExpr ( ( "cast" "as" ) SingleType )?
+// [ 28] CastExpr ::= ArrowExpr ( ( "cast" "as" ) SingleType )?
 //
 // OperatorCastAs --- SingleType
 //       |               |
 //   (UnaryExpr)     AtomicType
 //                     (type)
 //
-fn parse_cast_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_cast_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    let xnode = parse_unary_expr(lex)?;
+    let xnode = parse_arrow_expr(lex)?;
     let tok = lex.next_token();
     if tok.get_type() == TType::CastAs {
         lex.get_token();
@@ -1304,19 +1407,23 @@ fn parse_cast_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [49] SingleType ::= AtomicType "?"?
-// [53] AtomicType ::= QName
+// ((49)) SingleType ::= AtomicType "?"?
+// ((53)) AtomicType ::= QName
 //
-fn parse_single_type(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    let mut qname = parse_qname(lex)?;
-    if qname != "" {
+// [ 77] SingleType ::= SimpleTypeName "?"?
+// [100] SimpleTypeName ::= TypeName
+// [101] TypeName ::= EQName
+//
+fn parse_single_type(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let mut eqname = parse_eqname(lex)?;
+    if eqname != "" {
         let tok = lex.next_token();
         if tok.get_type() == TType::Question {
             lex.get_token();
-            qname += tok.get_name();
+            eqname += tok.get_name();
         }
         let single_type_xnode = new_xnode(XNodeType::SingleType, "");
-        let atomic_type_xnode = new_xnode(XNodeType::AtomicType, &qname);
+        let atomic_type_xnode = new_xnode(XNodeType::AtomicType, &eqname);
         assign_as_left(&single_type_xnode, &atomic_type_xnode);
         return Ok(single_type_xnode);
     }
@@ -1324,9 +1431,77 @@ fn parse_single_type(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [20] UnaryExpr ::= ( "-" | "+" )? ValueExpr
+// [ 29] ArrowExpr ::= UnaryExpr ( "=>" ArrowFunctionSpecifier ArgumentList)*
+// [ 55] ArrowFunctionSpecifier ::= EQName
+//                                | VarRef
+//                                | ParenthesizedExpr                  ☆
 //
-fn parse_unary_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+// UnaryExprを第1引数とすることを除き、FunctionCallと同じ構文木を生成する。
+//
+// (ArrowFunctionSpecifier ::= EQName の場合)
+//
+// FunctionCall --- ArgumentTop --- ArgumentTop --- ...
+//   (函数名)           |               |    <ArgumentList相当の構文木>
+//                      |              ...
+//                      |
+//                 (UnaryExpr)
+//
+// (ArrowFunctionSpecifier ::= VarRef の場合)
+//
+// ApplyPostfix --- ArgumentListTop
+//      |                 |
+//    VarRef          ArgumentTop --- ArgumentTop --- ...
+//   (変数名)             |               |    <ArgumentList相当の構文木>
+//                    (UnaryExpr)        ...
+//
+fn parse_arrow_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+
+    let xnode = parse_unary_expr(lex)?;
+    let mut curr_xnode = xnode.clone();
+    while lex.next_token().get_type() == TType::Arrow {
+        lex.get_token();
+
+        let func_name = parse_static_func_name(lex)?;
+        if func_name != "" {
+            let fcall_xnode = new_xnode(XNodeType::FunctionCall, &func_name);
+            let arglist_xnode = parse_argument_list(lex)?;
+            let arg_top_xnode = new_xnode(XNodeType::ArgumentTop, "");
+            assign_as_left(&arg_top_xnode, &curr_xnode);
+            assign_as_right(&arg_top_xnode, &arglist_xnode);
+            assign_as_right(&fcall_xnode, &arg_top_xnode);
+            curr_xnode = fcall_xnode.clone();
+            continue;
+        }
+
+        let varref_xnode = parse_varref(lex)?;
+        if ! is_nil_xnode(&varref_xnode) {
+            let apply_postfix_xnode = new_xnode(XNodeType::ApplyPostfix, "");
+            assign_as_left(&apply_postfix_xnode, &varref_xnode);
+            let argument_top_xnode = new_xnode(XNodeType::ArgumentListTop, "");
+            assign_as_right(&apply_postfix_xnode, &argument_top_xnode);
+
+            let arglist_xnode = parse_argument_list(lex)?;
+            let arg_top_xnode = new_xnode(XNodeType::ArgumentTop, "");
+            assign_as_left(&arg_top_xnode, &curr_xnode);
+            assign_as_right(&arg_top_xnode, &arglist_xnode);
+            assign_as_left(&argument_top_xnode, &arg_top_xnode);
+
+            curr_xnode = apply_postfix_xnode.clone();
+            continue;
+        }
+
+        return Err(xpath_syntax_error!(
+                    "{}: アロー演算子: 函数名が必要。",
+                    lex.around_tokens().as_str()));
+    }
+
+    return Ok(curr_xnode.clone());
+}
+
+// ---------------------------------------------------------------------
+// [ 23] UnaryExpr ::= ( "-" | "+" )? ValueExpr
+//
+fn parse_unary_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let tok = lex.next_token();
     match tok.get_type() {
         TType::Minus => {
@@ -1350,10 +1525,15 @@ fn parse_unary_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [21] ValueExpr ::= PathExpr
+// [ 31] ValueExpr ::= SimpleMapExpr
+// [ 35] SimpleMapExpr ::= PathExpr ("!" PathExpr)*
 //
-fn parse_value_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    return parse_path_expr(lex);
+fn parse_value_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let token_node_map: HashMap<TType, XNodeType> = [
+        ( TType::OperatorMap, XNodeType::OperatorMap ),
+    ].iter().cloned().collect();
+
+    return parse_bin_op_sub(lex, parse_path_expr, &token_node_map, false);
 }
 
 // ---------------------------------------------------------------------
@@ -1361,8 +1541,8 @@ fn parse_value_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 //    expr ::= subexpr (op subexpr)+ と考え、左結合になるように実装する。
 //    op_once: trueならば「subexpr (op subexpr)?」として扱う (nonassoc)。
 //
-fn parse_bin_op_sub(lex: &mut Lexer2,
-        sub_parser: fn(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>>,
+fn parse_bin_op_sub(lex: &mut Lexer,
+        sub_parser: fn(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>>,
         token_node_map: &HashMap<TType, XNodeType>,
         op_once: bool) -> Result<XNodePtr, Box<Error>> {
 
@@ -1388,9 +1568,9 @@ fn parse_bin_op_sub(lex: &mut Lexer2,
 }
 
 // ---------------------------------------------------------------------
-// [25] PathExpr ::= ("/" RelativePathExpr?)
-//                 | ("//" RelativePathExpr)
-//                 | RelativePathExpr
+// [ 36] PathExpr ::= ("/" RelativePathExpr?)
+//                  | ("//" RelativePathExpr)
+//                  | RelativePathExpr
 //
 //  OpPath  --- ((RelativePathExpr))
 //    |
@@ -1402,14 +1582,14 @@ fn parse_bin_op_sub(lex: &mut Lexer2,
 //    |
 //  AxisRoot
 //
-fn parse_path_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_path_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     let tok = lex.next_token();
     match tok.get_type() {
         TType::Slash => {
             lex.get_token();
 
-            let op_path_xnode = new_xnode(XNodeType::OperatorPath, "op_path");
+            let op_path_xnode = new_xnode(XNodeType::OperatorPath, "parse_path_expr Slash");
             let root_xnode = new_xnode(XNodeType::AxisRoot, "node()");
             assign_as_left(&op_path_xnode, &root_xnode);
 
@@ -1423,11 +1603,11 @@ fn parse_path_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
         TType::SlashSlash => {
             lex.get_token();
 
-            let op_path_xnode_u = new_xnode(XNodeType::OperatorPath, "op_path");
+            let op_path_xnode_u = new_xnode(XNodeType::OperatorPath, "parse_path_expr SlashSlash 1");
             let root_xnode = new_xnode(XNodeType::AxisRoot, "/");
             assign_as_left(&op_path_xnode_u, &root_xnode);
 
-            let op_path_xnode_l = new_xnode(XNodeType::OperatorPath, "op_path");
+            let op_path_xnode_l = new_xnode(XNodeType::OperatorPath, "parse_path_expr SlashSlash 2");
             let ds_xnode = new_xnode(XNodeType::AxisDescendantOrSelf, "node()");
             assign_as_right(&op_path_xnode_u, &op_path_xnode_l);
             assign_as_left(&op_path_xnode_l, &ds_xnode);
@@ -1445,7 +1625,7 @@ fn parse_path_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [26] RelativePathExpr ::= StepExpr (("/" | "//") StepExpr)*
+// [ 37] RelativePathExpr ::= StepExpr (("/" | "//") StepExpr)*
 //
 //  OpPath --- OpPath --- OpPath --- OpPath --- x
 //    |          |          |          |
@@ -1457,15 +1637,15 @@ fn parse_path_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 //    |
 // AxisXXX --- (predicate)
 //
-fn parse_relative_path_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_relative_path_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     let step_expr_xnode = parse_step_expr(lex)?;
     if is_nil_xnode(&step_expr_xnode) {
         return Ok(new_nil_xnode());
     }
-    let top_op_path_xnode = new_xnode(XNodeType::OperatorPath, "op_path aa");
+    let top_op_path_xnode = new_xnode(XNodeType::OperatorPath, "parse_relative_path_expr TOP");
     assign_as_left(&top_op_path_xnode, &step_expr_xnode);
-    let mut curr_xnode = Rc::clone(&top_op_path_xnode);
+    let mut curr_xnode = top_op_path_xnode.clone();
 
     loop {
         let tok = lex.next_token();
@@ -1473,130 +1653,175 @@ fn parse_relative_path_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
             TType::Slash => {
                 lex.get_token();
                 let step_expr_xnode = parse_step_expr(lex)?;
-                let op_path_xnode = new_xnode(XNodeType::OperatorPath, "op_path");
+                let op_path_xnode = new_xnode(XNodeType::OperatorPath, "parse_relative_path_expr Slash");
                 assign_as_left(&op_path_xnode, &step_expr_xnode);
                 assign_as_right(&curr_xnode, &op_path_xnode);
-                curr_xnode = Rc::clone(&op_path_xnode);
+                curr_xnode = op_path_xnode.clone();
             },
             TType::SlashSlash => {
                 lex.get_token();
                 let step_expr_xnode = parse_step_expr(lex)?;
 
-                let op_path_xnode_u = new_xnode(XNodeType::OperatorPath, "op_path");
+                let op_path_xnode_u = new_xnode(XNodeType::OperatorPath, "parse_relative_path_expr SlashSlash 1");
                 let ds_xnode = new_xnode(XNodeType::AxisDescendantOrSelf, "node()");
                 assign_as_left(&op_path_xnode_u, &ds_xnode);
 
-                let op_path_xnode_l = new_xnode(XNodeType::OperatorPath, "op_path");
+                let op_path_xnode_l = new_xnode(XNodeType::OperatorPath, "parse_relative_path_expr SlashSlash 2");
                 assign_as_left(&op_path_xnode_l, &step_expr_xnode);
 
                 assign_as_right(&op_path_xnode_u, &op_path_xnode_l);
                 assign_as_right(&curr_xnode, &op_path_xnode_u);
-                curr_xnode = Rc::clone(&op_path_xnode_l);
+                curr_xnode = op_path_xnode_l.clone();
             },
             _ => {
                 break;
             },
         }
     }
-    return Ok(top_op_path_xnode);
+
+    // -----------------------------------------------------------------
+    // 最後にtop_op_path_xnode (最上位のxnode) を返す。
+    // ただし、「(("/" | "//") StepExpr)*」部分が0個だった (rightがNil) 場合は
+    // 冗長なので、top_op_path_xnodeの左辺ノードを返す。
+    //
+    let right_of_top = get_right(&top_op_path_xnode);
+    if is_nil_xnode(&right_of_top) {
+        let left_of_top = get_left(&top_op_path_xnode);
+        return Ok(left_of_top);
+    } else {
+        return Ok(top_op_path_xnode);
+    }
 }
 
 // ---------------------------------------------------------------------
-// [27] StepExpr ::= FilterExpr | AxisStep
+// [ 38] StepExpr ::= PostfixExpr | AxisStep
 //
-fn parse_step_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_step_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    let xnode = parse_filter_expr(lex)?;
+    let xnode = parse_postfix_expr(lex)?;
     return_if_non_nil!(xnode);
 
     return parse_axis_step(lex);
 }
 
 // ---------------------------------------------------------------------
-// [38] FilterExpr ::= PrimaryExpr PredicateList
+// [ 49] PostfixExpr ::= PrimaryExpr (Predicate | ArgumentList | Lookup)*
+// これを次のように分解する。
+// [ 49a] PostfixExpr ::= PrimaryExpr PostfixList
+// [ 49b] PostfixList ::= Postfix*
+// [ 49c] Postfix ::= Predicate | ArgumentList | Lookup
 //
-// AxisXXXX --- (predicate_list)...
+//   [ApplyPostfix] -- (predicate) --- (argument_list) --- ...
+//           |
+//     (PrimaryExpr) --- (右辺値)...
+//           |
+//       (左辺値)...
 //
+// ただしPostfixListが空の場合はPrimaryExprをそのまま返す。
 //
-fn parse_filter_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_postfix_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let primary_xnode = parse_primary_expr(lex)?;
+    return_if_nil!(primary_xnode);
 
-    let mut xnode = parse_primary_expr(lex)?;
-    return_if_nil!(xnode);
-
-    // -----------------------------------------------------------------
-    // (PrimaryExprがAxis*である場合)
-    //
-    // AxisXXXX --- (predicate_list)...
-    //
-    if is_xnode_axis(&get_xnode_type(&xnode)) {
-        let xnode_preds = parse_predicate_list(lex, false)?;
-        assign_as_right(&xnode, &xnode_preds);
+    let postfix_xnode = parse_postfix_list(lex)?;
+    if ! is_nil_xnode(&postfix_xnode) {
+        let apply_postfix_xnode = new_xnode(XNodeType::ApplyPostfix, "");
+        assign_as_left(&apply_postfix_xnode, &primary_xnode);
+        assign_as_right(&apply_postfix_xnode, &postfix_xnode);
+        return Ok(apply_postfix_xnode);
+    } else {
+        return Ok(primary_xnode);
     }
-
-    // -----------------------------------------------------------------
-    // (PrimaryExprがAxis*以外である場合)
-    //
-    //   [ApplyPredicates] -- (predicate_list)...
-    //           |
-    //     (PrimaryExpr) --- (右辺値)...
-    //           |
-    //       (左辺値)...
-    //
-    if ! is_xnode_axis(&get_xnode_type(&xnode)) {
-        let xnode_preds = parse_predicate_list(lex, false)?;
-        if ! is_nil_xnode(&xnode_preds) {
-            let nop_node = new_xnode(XNodeType::ApplyPredicates, "");
-            assign_as_left(&nop_node, &xnode);
-            assign_as_right(&nop_node, &xnode_preds);
-            xnode = nop_node;
-        }
-    }
-
-    return Ok(xnode);
 }
 
 // ---------------------------------------------------------------------
-// [41] PrimaryExpr ::= Literal
-//                    | VarRef
-//                    | ParenthesizedExpr
-//                    | ContextItemExpr
-//                    | FunctionCall
-// [42] Literal ::= NumericLiteral (43) | StringLiteral (74)
-// [44] VarRef ::= "$" VarName
-// [45] VarName ::= QName
-// [46] ParenthesizedExpr ::= "(" Expr? ")"
-// [47] ContextItemExpr ::= "."
+// [ 49b] PostfixList ::= Postfix*
 //
-fn parse_primary_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_postfix_list(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let top_xnode = parse_postfix(lex)?;
+    return_if_nil!(top_xnode);
+
+    let mut curr_xnode = top_xnode.clone();
+    loop {
+        let xnode = parse_postfix(lex)?;
+        if is_nil_xnode(&xnode) {
+            break;
+        }
+        assign_as_right(&curr_xnode, &xnode);
+        curr_xnode = xnode.clone();
+    }
+    return Ok(top_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [ 49c] Postfix ::= Predicate | ArgumentList | Lookup
+//
+fn parse_postfix(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    match lex.next_token().get_type() {
+        TType::LeftBracket => {
+            let xnode = parse_predicate(lex)?;
+            let predicate_top_xnode = new_xnode(XNodeType::PredicateTop, "");
+            assign_as_left(&predicate_top_xnode, &xnode);
+            return Ok(predicate_top_xnode);
+        },
+        TType::LeftParen => {
+            let xnode = parse_argument_list(lex)?;
+            let argument_top_xnode = new_xnode(XNodeType::ArgumentListTop, "");
+            assign_as_left(&argument_top_xnode, &xnode);
+            return Ok(argument_top_xnode);
+        },
+//        TType::Question => {
+//        },
+        _ => {
+            return Ok(new_nil_xnode());
+        },
+    }
+}
+
+// ---------------------------------------------------------------------
+// [ 56] PrimaryExpr ::= Literal
+//                     | VarRef
+//                     | ParenthesizedExpr
+//                     | ContextItemExpr
+//                     | FunctionCall
+//                     | FunctionItemExpr
+//                     | MapConstructor                               ☆
+//                     | ArrayConstructor                             ☆
+//                     | UnaryLookup                                  ☆
+//
+fn parse_primary_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+
+    let xnode = parse_literal(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_varref(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_parenthesized_expr(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_context_item_expr(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_function_call(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_function_item_expr(lex)?;
+    return_if_non_nil!(xnode);
+
+    return Ok(new_nil_xnode());
+}
+
+// ---------------------------------------------------------------------
+// [ 57] Literal ::= NumericLiteral                -- [ 58] Lexer
+//                 | StringLiteral                 -- [116] Lexer
+//
+// {String,Integer,Decimal,Double}Literal
+//        (リテラル値の文字列)
+//
+fn parse_literal(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let tok = lex.next_token();
     match tok.get_type() {
-        TType::Dollar => {              // [44] VarRef
-            lex.get_token();
-
-            let qname = parse_qname(lex)?;
-            if qname != "" {
-                return Ok(new_xnode(XNodeType::VariableReference, qname.as_str()));
-            } else {
-                return Err(xpath_syntax_error!(
-                        "{}: 変数参照の $ に続いて名前が必要。",
-                        lex.around_tokens().as_str()));
-            }
-        },
-        TType::LeftParen => {           // [46] ParenthesizedExpr
-            lex.get_token();
-            let xnode = parse_expr(lex)?;
-
-            must_next_token!(lex, TType::RightParen,
-                    "{}: 左括弧に対応する右括弧が必要。");
-            lex.get_token();
-
-            if ! is_nil_xnode(&xnode) {
-                return Ok(xnode);
-            } else {
-                return Ok(new_xnode(XNodeType::OperatorPath, "(Empty parenthesized expr)"));
-                        // 空の括弧式があることを示す。
-            }
-        },
         TType::StringLiteral => {
             lex.get_token();
             return Ok(new_xnode(XNodeType::StringLiteral, tok.get_name()));
@@ -1613,6 +1838,81 @@ fn parse_primary_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
             lex.get_token();
             return Ok(new_xnode(XNodeType::DoubleLiteral, tok.get_name()));
         },
+        _ => {
+            return Ok(new_nil_xnode());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// [ 59] VarRef ::= "$" VarName
+// [ 60] VarName ::= EQName
+//
+//      VarRef
+// (変数名: EQName)
+//
+fn parse_varref(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let tok = lex.next_token();
+    match tok.get_type() {
+        TType::Dollar => {
+            lex.get_token();
+
+            let eqname = parse_eqname(lex)?;
+            if eqname != "" {
+                return Ok(new_xnode(XNodeType::VarRef, eqname.as_str()));
+            } else {
+                return Err(xpath_syntax_error!(
+                        "{}: 変数参照の $ に続いて名前が必要。",
+                        lex.around_tokens().as_str()));
+            }
+        },
+        _ => {
+            return Ok(new_nil_xnode());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// [ 61] ParenthesizedExpr ::= "(" Expr? ")"
+//
+// Exprに相当するxnode
+// ただしExprが空の場合、その旨を表すOperatorPath
+//
+fn parse_parenthesized_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+
+    let tok = lex.next_token();
+    match tok.get_type() {
+        TType::LeftParen => {
+            lex.get_token();
+            let xnode = parse_expr(lex)?;
+
+            error_if_not_ttype!(lex, TType::RightParen,
+                        "{}: 左括弧に対応する右括弧が必要。");
+            lex.get_token();
+
+            if ! is_nil_xnode(&xnode) {
+                return Ok(xnode);
+            } else {
+                return Ok(new_xnode(XNodeType::OperatorPath, "parse_parenthesized_expr (Empty)"));
+                        // 空の括弧式があることを示す。
+            }
+        },
+        _ => {
+            return Ok(new_nil_xnode());
+        },
+    }
+}
+
+// ---------------------------------------------------------------------
+// [ 62] ContextItemExpr ::= "."
+//
+//   ContextItem
+//       (.)
+//
+fn parse_context_item_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+
+    let tok = lex.next_token();
+    match tok.get_type() {
         TType::Dot => {
             lex.get_token();
             return Ok(new_xnode(XNodeType::ContextItem, "."));
@@ -1621,22 +1921,199 @@ fn parse_primary_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
                 //
         },
         _ => {
+            return Ok(new_nil_xnode());
         },
     }
-
-    let fcall_xnode = parse_function_call(lex)?;
-    if ! is_nil_xnode(&fcall_xnode) {
-        return Ok(fcall_xnode);
-    }
-
-    return Ok(new_nil_xnode());
-
 }
 
 // ---------------------------------------------------------------------
-// [48] FunctionCall ::= QName "(" (ExprSingle ("," ExprSingle)*)? ")"
+// [ 66] FunctionItemExpr ::= NamedFunctionRef
+//                          | InlineFunctionExpr
 //
-// FuncCall -- ArgTop -- ArgTop --...
+fn parse_function_item_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let xnode = parse_named_function_ref(lex)?;
+    return_if_non_nil!(xnode);
+
+    return parse_inline_function_expr(lex);
+}
+
+// ---------------------------------------------------------------------
+// [ 67] NamedFunctionRef ::= EQName "#" IntegerLiteral
+//
+fn parse_named_function_ref(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    lex.mark_token_index();
+    let func_name = parse_static_func_name(lex)?;
+    if func_name == "" {                            // 非該当
+        lex.restore_marked_index();
+        return Ok(new_nil_xnode());
+    }
+
+    let tok = lex.next_token();
+    if tok.get_type() != TType::Sharp {         // 非該当
+        lex.restore_marked_index();
+        return Ok(new_nil_xnode());
+    }
+    lex.get_token();
+
+    let tok = lex.next_token();
+    if tok.get_type() != TType::IntegerLiteral {         // 非該当
+        lex.restore_marked_index();
+        return Ok(new_nil_xnode());
+    }
+    let arity = tok.get_name();
+    lex.get_token();
+
+    let xnode = new_xnode(XNodeType::NamedFunctionRef,
+                    &(func_name + &"#" + &arity));
+    return Ok(xnode);
+}
+
+// ---------------------------------------------------------------------
+// [ 68] InlineFunctionExpr ::= "function" "(" ParamList? ")"
+//                                  ("as" SequenceType)? FunctionBody
+//
+// 「"as" SequenceType」省略時は「item()*」
+//
+// InlineFunction --- ReturnType ------- Param ------- Param ---...
+//       |                |            (varname)     (varname)
+//       |                |                |             |
+//       |          (SequenceType)   (SequenceType)(SequenceType)
+//       |
+//     Expr (FunctionBody) ---...
+//       |
+//      ...
+//
+fn parse_inline_function_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::Function);
+    lex.get_token();
+
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: function 文には左括弧が必要。");
+    lex.get_token();
+
+    let param_list_xnode = parse_param_list(lex)?;
+
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 引数リストを閉じる右括弧が必要。");
+    lex.get_token();
+
+    let return_type_xnode = new_xnode(XNodeType::ReturnType, "");
+    let tok = lex.next_token();
+    if tok.get_type() == TType::Name && tok.get_name() == "as" {
+        lex.get_token();
+        let xnode = parse_sequence_type(lex)?;
+        assign_as_left(&return_type_xnode, &xnode);
+    } else {        // 型の省略時は「item()*」
+        assign_as_left(&return_type_xnode, &default_sequence_type());
+    }
+
+    let function_body_xnode = parse_function_body(lex)?;
+
+    let inline_function_xnode = new_xnode(XNodeType::InlineFunction, "(inline function)");
+    assign_as_left(&inline_function_xnode, &function_body_xnode);
+    assign_as_right(&inline_function_xnode, &return_type_xnode);
+    assign_as_right(&return_type_xnode, &param_list_xnode);
+
+    return Ok(inline_function_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [  2] ParamList ::= Param ("," Param)*
+//
+fn parse_param_list(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let top_param_xnode = parse_param(lex)?;
+    return_if_nil!(top_param_xnode);
+
+    let mut curr = top_param_xnode.clone();
+    while lex.next_token().get_type() == TType::Comma {
+        lex.get_token();
+        let param_xnode = parse_param(lex)?;
+        assign_as_right(&curr, &param_xnode);
+        curr = param_xnode.clone();
+    }
+
+    return Ok(top_param_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [  3] Param ::= "$" EQName TypeDeclaration?
+// [ 78] TypeDeclaration ::= "as" SequenceType
+//
+fn parse_param(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::Dollar);
+    lex.get_token();
+
+    let param_name = parse_eqname(lex)?;
+    if param_name == "" {
+        return Err(xpath_syntax_error!(
+                    "{}: 引数名が必要。", lex.around_tokens().as_str()));
+    }
+
+    let tok = lex.next_token();
+    if tok.get_type() == TType::Name && tok.get_name() == "as" {
+        lex.get_token();
+        let seq_type_xnode = parse_sequence_type(lex)?;
+        let param_xnode = new_xnode(XNodeType::Param, &param_name);
+        assign_as_left(&param_xnode, &seq_type_xnode);
+        return Ok(param_xnode);
+    } else {        // 型の省略時は「item()*」
+        let param_xnode = new_xnode(XNodeType::Param, &param_name);
+        assign_as_left(&param_xnode, &default_sequence_type());
+        return Ok(param_xnode);
+    }
+}
+
+// ---------------------------------------------------------------------
+// 「item()*」に相当するSequenceType。
+//
+fn default_sequence_type() -> XNodePtr {
+    let xnode = new_xnode(XNodeType::SequenceType, "*");
+    let item_test_xnode = new_xnode(XNodeType::ItemTest, "");
+    assign_as_left(&xnode, &item_test_xnode);
+    return xnode;
+}
+
+// ---------------------------------------------------------------------
+// [  4] FunctionBody ::= EnclosedExpr
+// [  5] EnclosedExpr ::= "{" Expr? "}"
+//
+fn parse_function_body(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    error_if_not_ttype!(lex, TType::LeftCurly, "{}: 函数本体を始める左波括弧が必要。");
+    lex.get_token();
+
+    let xnode = parse_expr(lex)?;
+
+    error_if_not_ttype!(lex, TType::RightCurly, "{}: 函数本体を閉じる右波括弧が必要。");
+    lex.get_token();
+
+    return Ok(xnode);
+}
+
+// ---------------------------------------------------------------------
+// [ 69] MapConstructor ::= "map" "{" (MapConstructorEntry ("," MapConstructorEntry)*)? "}"
+// [ 70] MapConstructorEntry ::= MapKeyExpr ":" MapValueExpr
+// [ 71] MapKeyExpr ::= ExprSingle
+// [ 72] MapValueExpr ::= ExprSingle
+//
+// ---------------------------------------------------------------------
+// [ 73] ArrayConstructor ::= SquareArrayConstructor | CurlyArrayConstructor
+// [ 74] SquareArrayConstructor ::= "[" (ExprSingle ("," ExprSingle)*)? "]"
+// [ 75] CurlyArrayConstructor ::= "array" EnclosedExpr
+// [  5] EnclosedExpr ::= "{" Expr? "}"
+//
+// ---------------------------------------------------------------------
+// [ 53] Lookup ::= "?" KeySpecifier
+//
+// ---------------------------------------------------------------------
+// [ 76] UnaryLookup ::= "?" KeySpecifier
+// [ 54] KeySpecifier ::= NCName
+//                      | IntegerLiteral
+//                      | ParenthesizedExpr
+//                      | "*"
+//
+
+// ---------------------------------------------------------------------
+// [ 63] FunctionCall ::= EQName ArgumentList
+//
+// FuncCall -- ArgTop -- ArgTop -- ... -- Nil
 //               |         |
 //               |      OpLiteral
 //               |
@@ -1644,40 +2121,46 @@ fn parse_primary_expr(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 //               |
 //              (lhs)
 //
-// 引数並びの順に、XNodeArgumentTopを右に連結。
-// XNodeArgumentTopの左に、引数を表すExprを連結。
+// 引数並びの順に、ArgumentTopを右に連結。
+// ArgumentTopの左に、引数を表すExprを連結。
 //
-fn parse_function_call(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_function_call(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     // -------------------------------------------------------------
     // 左括弧まで先読みして、函数名か否か判定する。
+    // func_nameは、必要ならば "fn:" を補った形になっている。
     //
-    let func_name = parse_qname_left_paren(lex)?;
-    if func_name == "" {
+    lex.mark_token_index();
+    let func_name = parse_static_func_name(lex)?;
+    if func_name == "" {                            // 非該当
+        lex.restore_marked_index();
+        return Ok(new_nil_xnode());
+    }
+    let tok = lex.next_token();
+    if tok.get_type() != TType::LeftParen {         // 非該当
+        lex.restore_marked_index();
         return Ok(new_nil_xnode());
     }
 
-    let arg_node = parse_argument_array(lex)?;
-
-    must_next_token!(lex, TType::RightParen, "{}: 函数の引数並びを閉じる右括弧が必要。");
-    lex.get_token();
+    let arg_node = parse_argument_list(lex)?;       // 引数が0個ならばNil
 
     // -------------------------------------------------------------
     // 引数の数を調べる。
     //
-    let mut num_args: usize = 0;
-    let mut curr = Rc::clone(&arg_node);
+    let mut arity: usize = 0;
+    let mut curr = arg_node.clone();
     while ! is_nil_xnode(&curr) {
-        num_args += 1;
+        arity += 1;
         curr = get_right(&curr);
     }
 
     // -------------------------------------------------------------
     // この時点で函数表と照合して、函数の存在や引数の数を検査する。
     //
-    if func::check_function_spec(&func_name, num_args) == false {
+    if func::check_function_spec(&func_name, arity) == false {
         return Err(xpath_syntax_error!(
-            "{}: 函数が未実装、または引数の数 ({}) が不適切。", func_name, num_args));
+            "{}: 函数が未実装、または引数の数 ({}) が不適切。",
+            func_name, arity));
     }
 
     // -------------------------------------------------------------
@@ -1689,26 +2172,51 @@ fn parse_function_call(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [48] FunctionCall ::= QName "(" (ExprSingle ("," ExprSingle)*)? ")"
+// [ 50] ArgumentList ::= "(" (Argument ("," Argument)*)? ")"
 //
-fn parse_argument_array(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
-    let xnode = parse_argument(lex)?;
+//  ArgTop -- ArgTop --...
+//    |         |
+//    |      OpLiteral
+//    |
+//   OpEQ  -- (rhs)
+//    |
+//  (lhs)
+//                  ただし引数が0個の場合はNilを返す。
+//
+fn parse_argument_list(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
-    let mut curr = Rc::clone(&xnode);
+    error_if_not_ttype!(lex, TType::LeftParen, "{}: 引数並びの左括弧が必要。");
+    lex.get_token();
+
+    let xnode = parse_argument_list_sub(lex)?;
+
+    error_if_not_ttype!(lex, TType::RightParen, "{}: 引数並びの右括弧が必要。");
+    lex.get_token();
+
+    return Ok(xnode);
+}
+
+fn parse_argument_list_sub(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let xnode = parse_argument(lex)?;
+    return_if_nil!(xnode);
+
+    let mut curr = xnode.clone();
     while lex.next_token().get_type() == TType::Comma {
         lex.get_token();
         let next_arg_xnode = parse_argument(lex)?;
         assign_as_right(&curr, &next_arg_xnode);
-        curr = Rc::clone(&next_arg_xnode);
+        curr = next_arg_xnode.clone();
     }
 
     return Ok(xnode);
 }
 
 // ---------------------------------------------------------------------
-// Argument ::= Expr
+// [ 64] Argument ::= ExprSingle
+//                  | ArgumentPlaceholder                               ☆
+// [ 65] ArgumentPlaceholder ::= "?"                                    ☆
 //
-fn parse_argument(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
+fn parse_argument(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_expr_single(lex)?;
     return_if_nil!(xnode);
 
@@ -1722,104 +2230,57 @@ fn parse_argument(lex: &mut Lexer2) -> Result<XNodePtr, Box<Error>> {
 //
 
 // ---------------------------------------------------------------------
-// (Lexerの) 現在位置以降に、QNameまたはWildcardと解析できる字句があれば、
-// その文字列を返す。
+// 函数名 (EQName) と解析できる字句があれば、その文字列を返す。
+// ただし、UnprefixedNameである場合、"fn:" を補う。
 // 該当する字句がなければ空文字列を返す。
 //
-// Wildcard ::= "*"
-//            | (NCName ":" "*")
-//            | ("*" ":" NCName)
-//
-fn parse_qname_or_wildcard(lex: &mut Lexer2) -> Result<String, Box<Error>> {
-    let mut qname = String::new();
-
-    match lex.next_token().get_type() {
-        TType::Name => {
-            qname += lex.get_token().get_name();
-
-            if lex.next_token().get_type() != TType::Colon {
-                return Ok(qname);
-            }
-            lex.get_token();
-            qname += &":";
-
-            match lex.next_token().get_type() {
-                TType::Name | TType::Asterisk => {
-                    qname += lex.get_token().get_name();
-                    return Ok(qname);
-                },
-                _ => {
-                    return Err(xpath_syntax_error!(
-                                "{}: 「:」の後には名前または * が必要。",
-                                lex.around_tokens().as_str()));
-                },
-            }
-        },
-
-        TType::Asterisk => {
-            lex.get_token();
-            qname += &"*";
-
-            if lex.next_token().get_type() != TType::Colon {
-                return Ok(qname);
-            }
-            lex.get_token();
-            qname += &":";
-
-            if lex.next_token().get_type() != TType::Name {
-                return Err(xpath_syntax_error!("{}: 「:」の後には名前が必要。",
-                                    lex.around_tokens().as_str()));
-            }
-            qname += lex.get_token().get_name();
-            return Ok(qname);
-        },
-
-        _ => {
-            return Ok(qname);
-        },
+fn parse_static_func_name(lex: &mut Lexer) -> Result<String, Box<Error>> {
+    let func_name = parse_eqname(lex)?;
+    if func_name == "" {
+        return Ok(String::new());
     }
+
+    let prefixed_func_name = 
+        if ! func_name.starts_with("Q{") && ! func_name.contains(":") {
+            String::from("fn:") + &func_name
+        } else {
+            func_name
+        };
+    return Ok(prefixed_func_name);
 }
 
 // ---------------------------------------------------------------------
-// (Lexerの) 現在位置以降に、QNameと解析できる字句があり、
-// 続いてLeftParenが現れれば、LeftParenの位置まで進め、その文字列を返す。
-// 該当する字句がなければ、当初の位置に戻した上で、空文字列を返す。
+// EQNameと解析できる字句があれば、その文字列を返す。
+// 該当する字句がなければ空文字列を返す。
+// [112] EQName ::= QName
+//                | URIQualifiedName
+// [117] URIQualifiedName ::= BracedURILiteral NCName
+// [118] BracedURILiteral ::= "Q" "{" [^{}]* "}"
 //
-fn parse_qname_left_paren(lex: &mut Lexer2) -> Result<String, Box<Error>> {
-
-    let tok = lex.next_token();
-    if tok.get_type() != TType::Name {
-        return Ok(String::new());           // 非該当
+fn parse_eqname(lex: &mut Lexer) -> Result<String, Box<Error>> {
+    let qname = parse_qname(lex)?;
+    if qname != "" {
+        return Ok(qname);
     }
-    let mut qname = tok.get_name().to_string();
-    lex.get_token();
 
-    let tok = lex.next_token();
-    if tok.get_type() == TType::LeftParen {
-        lex.get_token();
-        return Ok(qname);                   // localpart (
+    let mut uri_qualified_name = String::new();
+    match lex.next_token().get_type() {
+        TType::BracedURILiteral => {
+            uri_qualified_name += lex.get_token().get_name();
+            match lex.next_token().get_type() {
+                TType::Name => {
+                    uri_qualified_name += lex.get_token().get_name();
+                    return Ok(uri_qualified_name);
+                },
+                _ => {
+                    lex.unget_token();
+                },
+            }
+        },
+        _ => {},
     }
-    if tok.get_type() != TType::Colon {
-        lex.unget_token();
-        return Ok(String::new());           // 非該当
-    }
-    lex.get_token();
-    qname += tok.get_name();                // prefix:
 
-    must_next_token!(lex, TType::Name, "{}: QName: コロンの後には名前が必要。");
-    let tok = lex.get_token();
-    qname += tok.get_name();                // prefix:localpart
-
-    let tok = lex.next_token();
-    if tok.get_type() == TType::LeftParen {
-        lex.get_token();
-        return Ok(qname);                   // prefix:localpart (
-    } else {
-        lex.unget_token();
-        lex.unget_token();
-        lex.unget_token();
-        return Ok(String::new());           // 非該当
-    }
+    return Ok(String::new());
 }
 
 // ---------------------------------------------------------------------
@@ -1832,7 +2293,7 @@ fn parse_qname_left_paren(lex: &mut Lexer2) -> Result<String, Box<Error>> {
 // Prefix ::= NCName
 // LocalPart ::= NCName
 //
-fn parse_qname(lex: &mut Lexer2) -> Result<String, Box<Error>> {
+fn parse_qname(lex: &mut Lexer) -> Result<String, Box<Error>> {
     let mut qname = String::new();
 
     let tok = lex.next_token();
@@ -1849,26 +2310,87 @@ fn parse_qname(lex: &mut Lexer2) -> Result<String, Box<Error>> {
     qname += tok.get_name();
     lex.get_token();
 
-    must_next_token!(lex, TType::Name, "{}: QName: コロンの後には名前が必要。");
+    error_if_not_ttype!(lex, TType::Name, "{}: QName: コロンの後には名前が必要。");
     let tok = lex.get_token();
     qname += tok.get_name();
 
     return Ok(qname);
 }
 
+// ---------------------------------------------------------------------
+// Wildcardと解析できる字句があれば、その文字列を返す。
+// 該当する字句がなければ空文字列を返す。
+// [ 48] Wildcard ::= "*"
+//                  | (NCName ":*")
+//                  | ("*:" NCName)
+//                  | (BracedURILiteral "*")
+// [118] BracedURILiteral ::= "Q" "{" [^{}]* "}"
+//
+fn parse_wildcard(lex: &mut Lexer) -> Result<String, Box<Error>> {
+
+    let mut qname = String::new();
+
+    match lex.next_token().get_type() {
+        TType::Asterisk => {
+            qname += lex.get_token().get_name();
+            return Ok(qname);
+        },
+        TType::Name => {
+            qname += lex.get_token().get_name();
+            match lex.next_token().get_type() {
+                TType::ColonAsterisk => {
+                    qname += lex.get_token().get_name();
+                    return Ok(qname);
+                },
+                _ => {
+                    lex.unget_token();
+                },
+            }
+        },
+        TType::AsteriskColon => {
+            qname += lex.get_token().get_name();
+            match lex.next_token().get_type() {
+                TType::Name => {
+                    qname += lex.get_token().get_name();
+                    return Ok(qname);
+                },
+                _ => {
+                    lex.unget_token();
+                },
+            }
+        },
+        TType::BracedURILiteral => {
+            qname += lex.get_token().get_name();
+            match lex.next_token().get_type() {
+                TType::Asterisk => {
+                    qname += lex.get_token().get_name();
+                    return Ok(qname);
+                },
+                _ => {
+                    lex.unget_token();
+                },
+            }
+        },
+        _ => {},
+    }
+    return Ok(String::new());
+}
+
 // =====================================================================
-// xnode関係のヘルパー函数
+// xnode関係の補助函数 (書き替えを伴うもの; 非公開)
 //
 
 // ---------------------------------------------------------------------
 //
 fn new_xnode(n_type: XNodeType, name: &str) -> XNodePtr {
-    return Rc::new(RefCell::new(XNode{
-        n_type: n_type,
-        name: String::from(name),
-        left: None,
-        right: None,
-    }));
+    return XNodePtr{
+        xnode_ptr: Rc::new(RefCell::new(XNode{
+            n_type: n_type,
+            name: String::from(name),
+            left: None,
+            right: None,
+        })),
+    };
 }
 
 // ---------------------------------------------------------------------
@@ -1879,15 +2401,10 @@ fn new_nil_xnode() -> XNodePtr {
 
 // ---------------------------------------------------------------------
 //
-//fn assign_xnode_type(xnode: &XNodePtr, n_type: &XNodeType) {
-//    xnode.borrow_mut().n_type = n_type.clone();
-//}
-
-// ---------------------------------------------------------------------
-//
 fn assign_as_left(parent: &XNodePtr, left: &XNodePtr) {
     if ! is_nil_xnode(left) {
-        parent.borrow_mut().left = Some(Rc::clone(left));
+        parent.xnode_ptr.borrow_mut().left =
+                Some(XNodePtr{xnode_ptr: Rc::clone(&left.xnode_ptr)});
     }
 }
 
@@ -1895,47 +2412,60 @@ fn assign_as_left(parent: &XNodePtr, left: &XNodePtr) {
 //
 fn assign_as_right(parent: &XNodePtr, right: &XNodePtr) {
     if ! is_nil_xnode(right) {
-        parent.borrow_mut().right = Some(Rc::clone(right));
+        parent.xnode_ptr.borrow_mut().right =
+                Some(XNodePtr{xnode_ptr: Rc::clone(&right.xnode_ptr)});
     }
 }
 
 // =====================================================================
-// xnode関係のヘルパー函数
+// xnode関係の補助函数 (参照のみおこなうもの; 公開)
 //
 
 // ---------------------------------------------------------------------
 //
 pub fn get_xnode_name(xnode: &XNodePtr) -> String {
-    return xnode.borrow().name.clone();
+    return xnode.xnode_ptr.borrow().name.clone();
 }
 
 // ---------------------------------------------------------------------
 //
 pub fn get_xnode_type(xnode: &XNodePtr) -> XNodeType {
-    return xnode.borrow().n_type.clone();
+    return xnode.xnode_ptr.borrow().n_type.clone();
 }
 
 // ---------------------------------------------------------------------
 //
-pub fn is_nil_xnode(node: &XNodePtr) -> bool {
-    return node.borrow().n_type == XNodeType::Nil;
+pub fn is_nil_xnode(xnode: &XNodePtr) -> bool {
+    return xnode.xnode_ptr.borrow().n_type == XNodeType::Nil;
 }
 
 // ---------------------------------------------------------------------
 //
 pub fn get_left(parent: &XNodePtr) -> XNodePtr {
-    match parent.borrow().left {
-        Some(ref left) => return Rc::clone(&left),
-        None => return new_nil_xnode(),
+    match parent.xnode_ptr.borrow().left {
+        Some(ref left) => {
+            return XNodePtr{
+                xnode_ptr: Rc::clone(&left.xnode_ptr),
+            };
+        },
+        None => {
+            return new_nil_xnode();
+        },
     }
 }
 
 // ---------------------------------------------------------------------
 //
 pub fn get_right(parent: &XNodePtr) -> XNodePtr {
-    match parent.borrow().right {
-        Some(ref right) => return Rc::clone(&right),
-        None => return new_nil_xnode(),
+    match parent.xnode_ptr.borrow().right {
+        Some(ref right) => {
+            return XNodePtr{
+                xnode_ptr: Rc::clone(&right.xnode_ptr),
+            };
+        },
+        None => {
+            return new_nil_xnode();
+        },
     }
 }
 
@@ -1946,7 +2476,6 @@ mod test {
 //    use super::*;
 
     use xpath_impl::lexer::*;
-    use xpath_impl::eval::xnode_dump;
     use xpath_impl::parser::compile_xpath;
 
     // -----------------------------------------------------------------
@@ -1954,20 +2483,27 @@ mod test {
     #[test]
     fn test_parse() {
 
-        let xpath = "3 treat as integer+";
+//        let xpath = r#" 'aBcDe' => upper-case() => substring(2, 3)"#;
+                // substring(upper-case('aBcDe'), 2, 3)
 
-        match Lexer2::new(&String::from(xpath)) {
+//        let xpath = "let $f := function($a) { $a * $a } return $f(5)";
+        let xpath = "let $f := function($a) { $a * $a } return 5 => $f()";
+
+
+
+
+        match Lexer::new(&String::from(xpath)) {
             Ok(lex) => {
                 println!("Tokens:\n{}", lex.token_dump());
             },
             Err(e) => {
-                println!("Lexer2 Err: {}", e);
+                println!("Lexer Err: {}", e);
             },
         }
 
         match compile_xpath(&String::from(xpath)) {
             Ok(xnode) => {
-                println!("\n{}", xnode_dump(&xnode));
+                println!("\n{}", xnode);
             },
             Err(e) => {
                 println!("Err: {}", e);

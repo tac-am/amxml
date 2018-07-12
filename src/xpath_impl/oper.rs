@@ -14,7 +14,7 @@ use xpath_impl::xitem::*;
 use xpath_impl::xsequence::*;
 
 // ---------------------------------------------------------------------
-// 6.2 Operators on Numeric Values
+// 4.2 Arithmatic Operators on Numeric Values
 //       op_numeric_add
 //       op_numeric_subtract
 //       op_numeric_multiply
@@ -73,7 +73,7 @@ fn op_numeric_operation<F>(args: &Vec<XSequence>, mut func_op: F) -> Result<XSeq
 }
 
 // ---------------------------------------------------------------------
-// 6.3 Comparison Operators on Numeric Values
+// 4.3 Comparison Operators on Numeric Values
 //
 // ---------------------------------------------------------------------
 //
@@ -101,12 +101,12 @@ fn op_numeric_comparison<F>(args: &Vec<&XSequence>, mut func_op: F) -> Result<XS
 }
 
 // ---------------------------------------------------------------------
-// 7.3.2 fn:compare
+// 5.3.6 fn:compare
 //   (文字列の比較はopでなくfnとして実装)
 // fn fn_compare(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
 //
 // ---------------------------------------------------------------------
-// 9.2 Operators on Boolean Values
+// 7.2 Operators on Boolean Values
 //
 // ---------------------------------------------------------------------
 //
@@ -133,7 +133,8 @@ pub fn op_boolean_greater_than(args: &Vec<&XSequence>) -> Result<XSequence, Box<
 }
 
 // ---------------------------------------------------------------------
-// 14 Functions and Operators on Nodes
+// Functions and Operators on Nodes
+//   (XPath 3.1 では演算子の項に載っていない)
 //          is_same_node
 //          node_before
 //          node_after
@@ -159,10 +160,11 @@ fn op_node_compare(args: &Vec<XSequence>, eval_env: &EvalEnv,
 }
 
 // ---------------------------------------------------------------------
-// 15 Functions and Operators on Sequences
+// Functions and Operators on Sequences
+//   (XPath 3.1 では演算子の項に載っていない)
 //
 // ---------------------------------------------------------------------
-// 15.1.2 op:concatenate
+// op:concatenate
 // op:concatenate($seq1 as item()*, $seq2 as item()*) as item()*
 //
 pub fn op_concatenate(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
@@ -173,7 +175,8 @@ pub fn op_concatenate(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.3 Equals, Union, Intersection and Except
+// Equals, Union, Intersection and Except
+//   (XPath 3.1 では演算子の項に載っていない)
 //
 pub fn op_union(args: &Vec<XSequence>, eval_env: &EvalEnv) -> Result<XSequence, Box<Error>> {
     let mut node_array: Vec<NodePtr> = vec!{};
@@ -212,8 +215,9 @@ pub fn op_except(args: &Vec<XSequence>, _eval_env: &EvalEnv) -> Result<XSequence
 }
 
 // ---------------------------------------------------------------------
-// 15.5 Functions and Operators that Generate Sequences
+// Functions and Operators that Generate Sequences
 //          to
+//   (XPath 3.1 では演算子の項に載っていない)
 //
 pub fn op_to(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
     let firstval = args[0].get_singleton_integer()?;
@@ -224,11 +228,6 @@ pub fn op_to(args: &Vec<XSequence>) -> Result<XSequence, Box<Error>> {
     }
     return Ok(seq);
 }
-
-// ---------------------------------------------------------------------
-// 17 Casting
-// ---------------------------------------------------------------------
-//
 
 // =====================================================================
 //

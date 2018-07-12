@@ -5,11 +5,11 @@
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
 //
 //!
-//! XML processor with some features of XPath 2.0.
+//! XML processor with some features of XPath 2.0 / 3.0 / 3.1.
 //!
 //! # Building DOM tree from XML document string
 //!
-//! Building DOM tree can be done by calling 'new_document' function.
+//! Building DOM tree can be done by calling <strong>new_document()</strong> function.
 //! The DOM tree can be turned into String.
 //!
 //! ```
@@ -23,8 +23,9 @@
 //! # Navigating DOM tree
 //!
 //! Navigating DOM tree, or retrieving the DOM node, can be done by
-//! 'root_element', 'parent', 'first_child', 'nth_child',
-//! 'attribute_value' methods.
+//! <strong>root_element()</strong>, <strong>parent()</strong>,
+//! <strong>first_child()</strong>, <strong>nth_child()</strong>,
+//! <strong>attribute_value()</strong> methods.
 //!
 //! See the description and example of corresponding method.
 //! 
@@ -34,7 +35,8 @@
 //! using XPath, especially when the search criteria is not trivial.
 //! 
 //! First XPath example is somewhat straightforward.
-//! 'each_node' method visits the DOM nodes that match with the given XPath,
+//! <strong>each_node()</strong> method visits the DOM nodes
+//! that match with the given XPath,
 //! and apply the function (closure) to these nodes.
 //!
 //! ```
@@ -51,12 +53,11 @@
 //! Second XPath example is more complex.
 //! This finds the clerk OR engineer (NOT advisor) who has no subordinates.
 //! Note that clerks and enginners appear in <em>document order</em>
-//! in 'each_node' iteration.
+//! in <strong>each_node()</strong> iteration.
 //!
 //! ```
 //! use amxml::dom::*;
 //! let xml = r#"
-//! <?xml version='1.0' encoding='UTF-8'?>
 //! <root>
 //!     <clerk name="Ann">
 //!         <advisor name="Betty"/>
@@ -80,8 +81,8 @@
 //! 
 //! ```
 //!
-//! Also see the description and example of 'each_node', 'get_first_node',
-//! 'get_nodeset' methods.
+//! Also see the description and example of <strong>each_node()</strong>,
+//! <strong>get_first_node()</strong>, <strong>get_nodeset()</strong> methods.
 //!
 //! # Evaluating XPath
 //!
@@ -93,7 +94,7 @@
 //! ```
 //! use amxml::dom::*;
 //! let xml = r#"
-//! <root base="base">
+//! <root>
 //!     <student>
 //!         <name>George</name>
 //!         <exam subject="math" point="70"/>
@@ -126,9 +127,11 @@
 //! # Manipurating the DOM node
 //!
 //! Inserting / replacing / deleting the DOM node can be done by
-//! methods like 'append_child', 'insert_as_previous_sibling', 
-//! 'insert_as_next_sibling', 'delete_child', 'replace_with', 'set_attribute',
-//! 'delete_attribute' methods.
+//! methods like <strong>append_child()</strong>,
+//! <strong>insert_as_previous_sibling()</strong>, 
+//! <strong>insert_as_next_sibling()</strong>,
+//! <strong>delete_child()</strong>, <strong>replace_with()</strong>,
+//! <strong>set_attribute()</strong>, <strong>delete_attribute()</strong> methods.
 //!
 //! See the description and example of corresponding method.
 //!

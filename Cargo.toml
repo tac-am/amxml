@@ -1,11 +1,11 @@
 [package]
 name = "amxml"
-version = "0.4.9"
+version = "0.5.0"
 authors = ["KOYAMA Hiro <tac@amris.co.jp>"]
-description = "XML processor with some features of XPath 2.0"
+description = "XML processor with some features of XPath 2.0 / 3.0 / 3.1"
 repository = "https://github.com/tac-am/amxml"
 readme = "README.md"
-keywords = ["XML", "XPath", "XPath2", "DOM", "SAX"]
+keywords = ["XML", "XPath", "XPath3", "DOM", "SAX"]
 license = "MIT OR Apache-2.0"
 
 [dependencies]

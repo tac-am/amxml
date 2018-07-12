@@ -29,87 +29,94 @@ fn usize_to_i64(n: usize) -> i64 {
 
 const M: usize = usize::MAX;
 
-const FUNC_WITH_ENV_TBL: [(&str,    // 函数名
-                           fn(&Vec<&XSequence>, &EvalEnv) -> Result<XSequence, Box<Error>>,
-                                    // 函数の実体
-                           usize,   // 引数の数: min
-                           usize);  // 引数の数: max
-                           2] = [
-// 16
-    ( "position",  fn_position,  0, 0 ),
-    ( "last",      fn_last,      0, 0 ),
-    // funcname, func, min_args, max_args
+const FUNC_WITH_ENV_TBL: [(
+        &str,                                       // 函数名
+        fn(&Vec<&XSequence>, &mut EvalEnv) -> Result<XSequence, Box<Error>>,
+                                                    // 函数の実体
+        usize,                                      // 引数の数: min
+        usize);                                     // 引数の数: max
+        4] = [
+// 15
+    ( "fn:position",  fn_position,  0, 0 ),
+    ( "fn:last",      fn_last,      0, 0 ),
+// 16.2
+    ( "fn:for-each",  fn_for_each,  2, 2 ),
+    ( "fn:filter",    fn_filter,    2, 2 ),
+
 ];
 
-const FUNC_TBL: [(&str,             // 函数名
-                  fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>,
+const FUNC_TBL: [(
+        &str,                       // 函数名
+        fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>,
                                     // 函数の実体
-                  usize,            // 引数の数: min
-                  usize,            // 引数の数: max
-                  bool);            // 引数が不足しているとき文脈ノードを補う
-                  47] = [
+        usize,                      // 引数の数: min
+        usize,                      // 引数の数: max
+        bool);                      // 引数が不足しているとき文脈ノードを補う
+        47] = [
 // 2
-    ( "string",                 fn_string,                 1, 1, true ),
-    ( "data",                   fn_data,                   1, 1, false ),
-// 6.4
-    ( "abs",                    fn_abs,                    1, 1, false ),
-    ( "ceiling",                fn_ceiling,                1, 1, false ),
-    ( "floor",                  fn_floor,                  1, 1, false ),
-    ( "round",                  fn_round,                  1, 1, false ),
-// 7.2.1
-    ( "codepoints-to-string",   fn_codepoints_to_string,   1, 1, false ),
-    ( "string-to-codepoints",   fn_string_to_codepoints,   1, 1, false ),
+    ( "fn:string",                 fn_string,                 1, 1, true ),
+    ( "fn:data",                   fn_data,                   1, 1, false ),
+// 4.4
+    ( "fn:abs",                    fn_abs,                    1, 1, false ),
+    ( "fn:ceiling",                fn_ceiling,                1, 1, false ),
+    ( "fn:floor",                  fn_floor,                  1, 1, false ),
+    ( "fn:round",                  fn_round,                  1, 1, false ),
+// 4.5
+    ( "fn:number",                 fn_number,                 1, 1, true ),
+// 5.2.1
+    ( "fn:codepoints-to-string",   fn_codepoints_to_string,   1, 1, false ),
+    ( "fn:string-to-codepoints",   fn_string_to_codepoints,   1, 1, false ),
+// 5.3
+    ( "fn:compare",                fn_compare,                2, 3, false ),
+// 5.4
+    ( "fn:concat",                 fn_concat,                 2, M, false ),
+    ( "fn:string-join",            fn_string_join,            1, 2, false ),
+    ( "fn:substring",              fn_substring,              2, 3, false ),
+    ( "fn:string-length",          fn_string_length,          1, 1, true ),
+    ( "fn:normalize-space",        fn_normalize_space,        1, 1, true ),
+    ( "fn:upper-case",             fn_upper_case,             1, 1, false ),
+    ( "fn:lower-case",             fn_lower_case,             1, 1, false ),
+    ( "fn:translate",              fn_translate,              3, 3, false ),
+// 5.5
+    ( "fn:contains",               fn_contains,               2, 3, false ),
+    ( "fn:starts-with",            fn_starts_with,            2, 3, false ),
+    ( "fn:ends-with",              fn_ends_with,              2, 3, false ),
+    ( "fn:substring-before",       fn_substring_before,       2, 3, false ),
+    ( "fn:substring-after",        fn_substring_after,        2, 3, false ),
+// 7.1
+    ( "fn:true",                   fn_true,                   0, 0, false ),
+    ( "fn:false",                  fn_false,                  0, 0, false ),
 // 7.3
-    ( "compare",                fn_compare,                2, 3, false ),
-// 7.4
-    ( "concat",                 fn_concat,                 2, M, false ),
-    ( "string-join",            fn_string_join,            2, 2, false ),
-    ( "substring",              fn_substring,              2, 3, false ),
-    ( "string-length",          fn_string_length,          1, 1, true ),
-    ( "normalize-space",        fn_normalize_space,        1, 1, true ),
-    ( "upper-case",             fn_upper_case,             1, 1, false ),
-    ( "lower-case",             fn_lower_case,             1, 1, false ),
-    ( "translate",              fn_translate,              3, 3, false ),
-// 7.5
-    ( "contains",               fn_contains,               2, 3, false ),
-    ( "starts-with",            fn_starts_with,            2, 3, false ),
-    ( "ends-with",              fn_ends_with,              2, 3, false ),
-    ( "substring-before",       fn_substring_before,       2, 3, false ),
-    ( "substring-after",        fn_substring_after,        2, 3, false ),
-// 9.1
-    ( "true",                   fn_true,                   0, 0, false ),
-    ( "false",                  fn_false,                  0, 0, false ),
-// 9.3
-    ( "not",                    fn_not,                    1, 1, false ),
-// 14
-    ( "name",                   fn_name,                   1, 1, true ),
-    ( "local-name",             fn_local_name,             1, 1, true ),
-    ( "namespace-uri",          fn_namespace_uri,          1, 1, true ),
-    ( "number",                 fn_number,                 1, 1, true ),
-    ( "lang",                   fn_lang,                   1, 2, true ),
-    ( "root",                   fn_root,                   1, 1, true ),
-// 15.1
-    ( "boolean",                fn_boolean,                1, 1, false ),
-    ( "index-of",               fn_index_of,               2, 3, false ),
-    ( "empty",                  fn_empty,                  1, 1, false ),
-    ( "exists",                 fn_exists,                 1, 1, false ),
-    ( "insert-before",          fn_insert_before,          3, 3, false ),
-    ( "remove",                 fn_remove,                 2, 2, false ),
-    ( "reverse",                fn_reverse,                1, 1, false ),
-    ( "subsequence",            fn_subsequence,            2, 3, false ),
-// 15.2
-    ( "zero-or-one",            fn_zero_or_one,            1, 1, false ),
-    ( "one-or-more",            fn_one_or_more,            1, 1, false ),
-    ( "exactly-one",            fn_exactly_one,            1, 1, false ),
-// 15.3
-// 15.4
-    ( "count",                  fn_count,                  1, 1, false ),
-    ( "avg",                    fn_avg,                    1, 1, false ),
-    ( "max",                    fn_max,                    1, 2, false ),
-    ( "min",                    fn_min,                    1, 2, false ),
-    ( "sum",                    fn_sum,                    1, 2, false ),
+    ( "fn:boolean",                fn_boolean,                1, 1, false ),
+    ( "fn:not",                    fn_not,                    1, 1, false ),
+// 13
+    ( "fn:name",                   fn_name,                   1, 1, true ),
+    ( "fn:local-name",             fn_local_name,             1, 1, true ),
+    ( "fn:namespace-uri",          fn_namespace_uri,          1, 1, true ),
+    ( "fn:lang",                   fn_lang,                   1, 2, true ),
+    ( "fn:root",                   fn_root,                   1, 1, true ),
+// 14.1
+    ( "fn:empty",                  fn_empty,                  1, 1, false ),
+    ( "fn:exists",                 fn_exists,                 1, 1, false ),
+    ( "fn:insert-before",          fn_insert_before,          3, 3, false ),
+    ( "fn:remove",                 fn_remove,                 2, 2, false ),
+    ( "fn:reverse",                fn_reverse,                1, 1, false ),
+    ( "fn:subsequence",            fn_subsequence,            2, 3, false ),
+// 14.2
+    ( "fn:index-of",               fn_index_of,               2, 3, false ),
+// 14.3
+    ( "fn:zero-or-one",            fn_zero_or_one,            1, 1, false ),
+    ( "fn:one-or-more",            fn_one_or_more,            1, 1, false ),
+    ( "fn:exactly-one",            fn_exactly_one,            1, 1, false ),
+// 14.4
+    ( "fn:count",                  fn_count,                  1, 1, false ),
+    ( "fn:avg",                    fn_avg,                    1, 1, false ),
+    ( "fn:max",                    fn_max,                    1, 2, false ),
+    ( "fn:min",                    fn_min,                    1, 2, false ),
+    ( "fn:sum",                    fn_sum,                    1, 2, false ),
     // funcname, func, min_args, max_args, default_is_context_node_set
-    // ( "id",                    fn_id,                     1, 2, true ),
+    // ( "fn:id",                    fn_id,                     1, 2, true ),
+
 ];
 
 // ---------------------------------------------------------------------
@@ -165,10 +172,10 @@ pub fn check_function_spec(func_name: &str, num_args: usize) -> bool {
 //
 pub fn evaluate_function(func_name: &str, args: &Vec<XSequence>,
                 xseq: &XSequence,
-                eval_env: &EvalEnv) -> Result<XSequence, Box<Error>> {
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     let mut found = false;
-    let mut fn_env: Option<&fn(&Vec<&XSequence>, &EvalEnv) -> Result<XSequence, Box<Error>>> = None;
+    let mut fn_env: Option<&fn(&Vec<&XSequence>, &mut EvalEnv) -> Result<XSequence, Box<Error>>> = None;
     let mut fn_arg: Option<&fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>> = None;
     let mut fn_min_args = 0;
     let mut fn_max_args = 0;
@@ -254,7 +261,7 @@ fn fn_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     }
 
     let item = args[0].get_singleton_item()?;
-    let result = item.get_as_raw_string();
+    let result = item.get_as_raw_string()?;
     return Ok(new_singleton_string(&result));
 }
 
@@ -267,29 +274,14 @@ fn fn_data(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 3 Error Function
+// 3 Error and diagnostics
 //
 
 // ---------------------------------------------------------------------
-// 4 Trace Function
-//
-
-// ---------------------------------------------------------------------
-// 5 Constructor Functions
-//
-
-// ---------------------------------------------------------------------
-// 6 Functions and Operators on Numerics
-//
-
-// ---------------------------------------------------------------------
-// 6.2 Operators on Numeric Values
+// 4 Functions and Operators on Numerics
 //
 // ---------------------------------------------------------------------
-// 6.3 Comparison Operators on Numeric Values
-//
-// ---------------------------------------------------------------------
-// 6.4 Functions on Numeric Values
+// 4.4 Functions on Numeric Values
 //        abs
 //        ceiling
 //        floor
@@ -297,7 +289,7 @@ fn fn_data(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 //        round_half_to_even
 //
 // ---------------------------------------------------------------------
-// 6.4.1 fn:abs
+// 4.4.1 fn:abs
 // fn:abs($arg as numeric?) as numeric?
 //
 fn fn_abs(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -308,7 +300,7 @@ fn fn_abs(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 6.4.2 fn:ceiling
+// 4.4.2 fn:ceiling
 // fn:ceiling($arg as numeric?) as numeric?
 //      空シーケンス => 空シーケンス
 //
@@ -320,7 +312,7 @@ fn fn_ceiling(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 6.4.3 fn:floor
+// 4.4.3 fn:floor
 // fn:floor($arg as numeric?) as numeric?
 //      空シーケンス => 空シーケンス
 //
@@ -332,7 +324,7 @@ fn fn_floor(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 6.4.4 fn:round
+// 4.4.4 fn:round
 // fn:round($arg as numeric?) as numeric?
 //      空シーケンス => 空シーケンス
 //
@@ -399,10 +391,29 @@ fn fn_numeric_unary<FINT, FDEC, FDBL>(args: &Vec<&XSequence>,
 }
 
 // ---------------------------------------------------------------------
-// 7 Functions on Strings
+// 4.5.1 fn:number
+// fn:number() as xs:double
+// fn:number($arg as xs:anyAtomicType?) as xs:double
+//
+fn fn_number(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_singleton_double(f64::NAN));
+    }
+    let mut result = 0.0;
+    if let Ok(arg) = args[0].get_singleton_item() {
+        result = arg.get_as_raw_double()?;
+    }
+    return Ok(new_singleton_double(result));
+}
+
+// ---------------------------------------------------------------------
+// 5 Functions on Strings
 //
 // ---------------------------------------------------------------------
-// 7.2.1 fn:codepoints-to-string
+// 5.2 Functions to Assemble and Disassemble Strings
+//
+// ---------------------------------------------------------------------
+// 5.2.1 fn:codepoints-to-string
 // fn:codepoints-to-string($arg as xs:integer*) as xs:string
 //
 pub fn fn_codepoints_to_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -425,7 +436,7 @@ pub fn fn_codepoints_to_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<
 }
 
 // ---------------------------------------------------------------------
-// 7.2.2 fn:string-to-codepoints
+// 5.2.2 fn:string-to-codepoints
 // fn:string-to-codepoints($arg as xs:string?) as xs:integer*
 //
 pub fn fn_string_to_codepoints(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -453,16 +464,10 @@ pub fn fn_string_to_codepoints(args: &Vec<&XSequence>) -> Result<XSequence, Box<
 }
 
 // ---------------------------------------------------------------------
-// 7.2 Functions to Assemble and Disassemble Strings
-//
-
-// ---------------------------------------------------------------------
-// 7.3 Equality and Comparison of Strings
-//          compare
-//          codepoint_equal
+// 5.3 Comparison of Strings
 //
 // ---------------------------------------------------------------------
-// 7.3.2 fn:compare
+// 5.3.6 fn:compare
 // fn:compare($comparand1 as xs:string?,
 //            $comparand2 as xs:string?) as xs:integer?
 // fn:compare($comparand1 as xs:string?,
@@ -493,7 +498,7 @@ pub fn fn_compare(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.4 Functions on String Values
+// 5.4 Functions on String Values
 //      concat
 //      string_join
 //      substring
@@ -508,42 +513,48 @@ pub fn fn_compare(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 //      escape_html_uri
 //
 // ---------------------------------------------------------------------
-// 7.4.1 fn:concat
+// 5.4.1 fn:concat
 // fn:concat($arg1 as xs:anyAtomicType?,
 //           $arg2 as xs:anyAtomicType?,
 //           ... ) as xs:string
 //
 //                  引数がすべて空シーケンスの場合、空文字列を返す。
 //
-fn fn_concat(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+pub fn fn_concat(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     let mut val = String::new();
     for arg in args.iter() {
         if ! arg.is_empty() {
-            val += &arg.get_singleton_item()?.get_as_raw_string();
+            val += &arg.get_singleton_item()?.get_as_raw_string()?;
         }
     }
     return Ok(new_singleton_string(&val));
 }
 
 // ---------------------------------------------------------------------
-// 7.4.2 fn:string-join
+// 5.4.2 fn:string-join
+// fn:string-join($arg1 as xs:string*) as xs:string
 // fn:string-join($arg1 as xs:string*, $arg2 as xs:string) as xs:string
 //
 fn fn_string_join(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
-    let separator = args[1].get_singleton_string()?;
+    let separator = if args.len() < 2 {
+            String::new()
+        } else {
+            args[1].get_singleton_string()?
+        };
+
     let mut result = String::new();
     for (i, s) in args[0].iter().enumerate() {
         if i != 0 {
             result += &separator;
         }
-        result += &s.get_as_raw_string();
+        result += &s.get_as_raw_string()?;
     }
     return Ok(new_singleton_string(&result));
 }
 
 
 // ---------------------------------------------------------------------
-// 7.4.3 fn:substring
+// 5.4.3 fn:substring
 // fn:substring($sourceString as xs:string?,
 //              $startingLoc as xs:double) as xs:string
 // fn:substring($sourceString as xs:string?,
@@ -581,7 +592,7 @@ fn fn_substring(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.4.4 fn:string-length
+// 5.4.4 fn:string-length
 // fn:string-length() as xs:integer
 // fn:string-length($arg as xs:string?) as xs:integer
 //
@@ -597,7 +608,7 @@ fn fn_string_length(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.4.5 fn:normalize-space
+// 5.4.5 fn:normalize-space
 // fn:normalize-space() as xs:integer
 // fn:normalize-space($arg as xs:string?) as xs:integer
 //
@@ -616,7 +627,7 @@ fn fn_normalize_space(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.4.7 fn:upper-case
+// 5.4.7 fn:upper-case
 // fn:upper-case($arg as xs:string?) as xs:string
 //
 fn fn_upper_case(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -629,7 +640,7 @@ fn fn_upper_case(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.4.8 fn:lower-case
+// 5.4.8 fn:lower-case
 // fn:upper-case($arg as xs:string?) as xs:string
 //
 fn fn_lower_case(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -642,7 +653,7 @@ fn fn_lower_case(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.4.9 fn:translate
+// 5.4.9 fn:translate
 // fn:translate($arg as xs:string?,
 //              $mapString as xs:string,
 //              $transString as xs:string) as xs:string
@@ -680,17 +691,11 @@ fn fn_translate(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     return Ok(new_singleton_string(&result));
 }
 
-
 // ---------------------------------------------------------------------
-// 7.5 Functions Based on Substring Matching
-//      contains
-//      starts_with
-//      ends_with
-//      substring_before
-//      substring_after
+// 5.5 Functions Based on Substring Matching
 //
 // ---------------------------------------------------------------------
-// 7.5.1 fn:contains
+// 5.5.1 fn:contains
 // fn:contains($arg1 as xs:string?, $arg2 as xs:string?) as xs:boolean
 // fn:contains($arg1 as xs:string?,
 //             $arg2 as xs:string?,
@@ -712,7 +717,7 @@ fn fn_contains(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.5.2 fn:starts-with
+// 5.5.2 fn:starts-with
 // fn:start-with($arg1 as xs:string?, $arg2 as xs:string?) as xs:boolean
 // fn:start-with($arg1 as xs:string?,
 //               $arg2 as xs:string?,
@@ -734,7 +739,7 @@ fn fn_starts_with(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.5.3 fn:ends-with
+// 5.5.3 fn:ends-with
 // fn:start-with($arg1 as xs:string?, $arg2 as xs:string?) as xs:boolean
 // fn:start-with($arg1 as xs:string?,
 //               $arg2 as xs:string?,
@@ -756,7 +761,7 @@ fn fn_ends_with(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.5.4 fn:substring-before
+// 5.5.4 fn:substring-before
 // fn:substring-before($arg1 as xs:string?, $arg2 as xs:string?) as xs:string
 // fn:substring-before($arg1 as xs:string?,
 //                     $arg2 as xs:string?,
@@ -782,7 +787,7 @@ fn fn_substring_before(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> 
 }
 
 // ---------------------------------------------------------------------
-// 7.5.5 fn:substring-after
+// 5.5.5 fn:substring-after
 // fn:substring-after($arg1 as xs:string?, $arg2 as xs:string?) as xs:string
 // fn:substring-after($arg1 as xs:string?,
 //                    $arg2 as xs:string?,
@@ -808,22 +813,21 @@ fn fn_substring_after(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 7.6 String Functions that Use Pattern Matching
+// 5.6 String Functions that Use Regular Expressions
 //
 
 // ---------------------------------------------------------------------
-// 8 Functions on anyURI
+// 6 Functions that manipulate URIs
 //
 
 // ---------------------------------------------------------------------
-// 9 Functions and Operators on Boolean Values
-//
-
-// ---------------------------------------------------------------------
-// 9.1 Additional Boolean Constructor Functions
+// 7 Functions and Operators on Boolean Values
 //
 // ---------------------------------------------------------------------
-// 9.1 fn:true
+// 7.1 Boolean Constant Functions
+//
+// ---------------------------------------------------------------------
+// 7.1.1 fn:true
 // fn:true() as xs:boolean
 //
 fn fn_true(_args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -831,7 +835,7 @@ fn fn_true(_args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 9.2 fn:false
+// 7.1.2 fn:false
 // fn:false() as xs:boolean
 //
 fn fn_false(_args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -839,13 +843,21 @@ fn fn_false(_args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 9.2 Operators on Boolean Values
+// 7.3 Functions on Boolean Values
 //
 // ---------------------------------------------------------------------
-// 9.3 Functions on Boolean Values
+// 7.3.1 fn:boolean
+// fn:boolean($arg as item()*) as xs:boolean
+//      実効ブール値を返す。
 //
+fn fn_boolean(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+
+    let b = args[0].effective_boolean_value()?;
+    return Ok(new_singleton_boolean(b));
+}
+
 // ---------------------------------------------------------------------
-// 9.3.1 fn:not
+// 7.3.2 fn:not
 // fn:not($arg as item()*) as xs:boolean
 //      実効ブール値の否定を返す。
 //
@@ -855,25 +867,21 @@ pub fn fn_not(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 10 Functions and Operators on Durations, Dates and Times
+// 8 Functions and Operators on Durations
 // ---------------------------------------------------------------------
-// 11 Functions Related to QNames
+// 9 Functions and Operators on Dates and Times
 // ---------------------------------------------------------------------
-// 12 Operators on base64Binary and hexBinary
+// 10 Functions Related to QNames
 // ---------------------------------------------------------------------
-// 13 Operators on NOTATION
+// 11 Operators on base64Binary and hexBinary
+// ---------------------------------------------------------------------
+// 12 Operators on NOTATION
 
 // ---------------------------------------------------------------------
-// 14 Functions and Operators on Nodes
-//          name
-//          local_name
-//          namespace_uri
-//          number
-//          lang
-//          root
+// 13 Functions and Operators on Nodes
 //
 // ---------------------------------------------------------------------
-// 14.1 fn:name
+// 13.1 fn:name
 // fn:name() as xs:string
 // fn:name($arg as node()?) as xs:string
 //
@@ -889,7 +897,7 @@ fn fn_name(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 14.2 fn:local-name
+// 13.2 fn:local-name
 // fn:local-name() as xs:string
 // fn:local-name($arg as node()?) as xs:string
 //
@@ -905,7 +913,7 @@ fn fn_local_name(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 14.3 fn:namespace-uri
+// 13.3 fn:namespace-uri
 // fn:namespace-uri() as xs:anyURI
 // fn:namespace-uri($arg as node()?) as xs:anyURI
 //
@@ -921,23 +929,7 @@ fn fn_namespace_uri(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 14.4 fn:number
-// fn:number() as xs:double
-// fn:number($arg as xs:anyAtomicType?) as xs:double
-//
-fn fn_number(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
-    if args[0].is_empty() {
-        return Ok(new_singleton_double(f64::NAN));
-    }
-    let mut result = 0.0;
-    if let Ok(arg) = args[0].get_singleton_item() {
-        result = arg.get_as_raw_double()?;
-    }
-    return Ok(new_singleton_double(result));
-}
-
-// ---------------------------------------------------------------------
-// 14.5 fn:lang
+// 13.4 fn:lang
 // fn:lang($testlang as xs:string?) as xs:boolean
 // fn:lang($testlang as xs:string?, $node as node()) as xs:boolean
 //
@@ -963,7 +955,7 @@ fn fn_lang(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 14.9 fn:root
+// 13.5 fn:root
 // fn:root() as node()
 // fn:root($arg as node()?) as node()?
 //
@@ -982,45 +974,13 @@ fn fn_root(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15 Functions and Operators on Sequences
-//
-
-// ---------------------------------------------------------------------
-// 15.1 General Functions and Operators on Sequences
+// 14 Functions and Operators on Sequences
 //
 // ---------------------------------------------------------------------
-// 15.1.1 fn:boolean
-// fn:boolean($arg as item()*) as xs:boolean
-//      実効ブール値を返す。
+// 14.1 General Functions and Operators on Sequences
 //
-fn fn_boolean(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
-
-    let b = args[0].effective_boolean_value()?;
-    return Ok(new_singleton_boolean(b));
-}
-
 // ---------------------------------------------------------------------
-// 15.1.3 fn:index-of
-// fn:index-of($seqParam as xs:anyAtomicType*,
-//             $srchParam as xs:anyAtomicType) as xs:integer*
-// fn:index-of($seqParam as xs:anyAtomicType*,
-//             $srchParam as xs:anyAtomicType,
-//             $collation as xs:string) as xs:integer*
-//
-fn fn_index_of(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
-    let seq_param = args[0];
-    let srch_param = args[1];
-    let mut result = new_xsequence();
-    for (i, v) in seq_param.iter().enumerate() {
-        if value_compare_eq(&new_singleton(v), srch_param)?.get_singleton_boolean()? == true {
-            result.push(&new_xitem_integer(usize_to_i64(i + 1)));
-        }
-    }
-    return Ok(result);
-}
-
-// ---------------------------------------------------------------------
-// 15.1.4 fn:empty
+// 14.1.1 fn:empty
 // fn:empty($arg as item()*) as xs:boolean
 //
 fn fn_empty(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1028,7 +988,7 @@ fn fn_empty(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.1.5 fn:exists
+// 14.1.2 fn:exists
 // fn:exists($arg as item()*) as xs:boolean
 //
 fn fn_exists(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1036,7 +996,7 @@ fn fn_exists(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.1.7 fn:insert-before
+// 14.1.5 fn:insert-before
 // fn:insert-before($target as item()*,
 //                  $position as xs:integer,
 //                  $inserts as item()*) as item()*
@@ -1065,7 +1025,7 @@ fn fn_insert_before(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.1.8 fn:remove
+// 14.1.6 fn:remove
 // fn:remove($target as item()*, $position as xs:integer) as item()*
 //
 fn fn_remove(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1081,7 +1041,7 @@ fn fn_remove(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.1.9 fn:reverse
+// 14.1.7 fn:reverse
 // fn:reverse($arg as item()*) as item()*
 //
 fn fn_reverse(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1091,7 +1051,7 @@ fn fn_reverse(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.1.10 fn:subsequence
+// 14.1.8 fn:subsequence
 // fn:subsequence($sourceSeq as item()*,
 //                $startingLoc as xs:double) as item()*
 // fn:subsequence($sourceSeq as item()*,
@@ -1123,10 +1083,33 @@ fn fn_subsequence(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.2 Functions That Test the Cardinality of Sequences
+// 14.2 Functions That Compare Values in Sequences
 //
 // ---------------------------------------------------------------------
-// 15.2.1 fn:zero-or-one
+// 14.2.2 fn:index-of
+// fn:index-of($seqParam as xs:anyAtomicType*,
+//             $srchParam as xs:anyAtomicType) as xs:integer*
+// fn:index-of($seqParam as xs:anyAtomicType*,
+//             $srchParam as xs:anyAtomicType,
+//             $collation as xs:string) as xs:integer*
+//
+fn fn_index_of(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let seq_param = args[0];
+    let srch_param = args[1];
+    let mut result = new_xsequence();
+    for (i, v) in seq_param.iter().enumerate() {
+        if value_compare_eq(&new_singleton(v), srch_param)?.get_singleton_boolean()? == true {
+            result.push(&new_xitem_integer(usize_to_i64(i + 1)));
+        }
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
+// 14.3 Functions That Test the Cardinality of Sequences
+//
+// ---------------------------------------------------------------------
+// 14.3.1 fn:zero-or-one
 // fn:zero-or-one($arg as item()*) as item()?
 //
 fn fn_zero_or_one(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1138,7 +1121,7 @@ fn fn_zero_or_one(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.2.2 fn:one-or-more
+// 14.3.2 fn:one-or-more
 // fn:one-or-more($arg as item()*) as item()?
 //
 fn fn_one_or_more(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1150,7 +1133,7 @@ fn fn_one_or_more(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.2.3 fn:exactly-one
+// 14.3.3 fn:exactly-one
 // fn:exactly-one($arg as item()*) as item()?
 //
 fn fn_exactly_one(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1162,15 +1145,10 @@ fn fn_exactly_one(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.4 Aggregate Functions
-//          count
-//          avg
-//          max
-//          min
-//          sum
+// 14.4 Aggregate Functions
 //
 // ---------------------------------------------------------------------
-// 15.4.1 fn:count
+// 14.4.1 fn:count
 // fn:count($arg as item()*) as xs:integer
 //
 fn fn_count(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
@@ -1178,7 +1156,7 @@ fn fn_count(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.4.2 fn:avg
+// 14.4.2 fn:avg
 // fn:avg($arg as xs:anyAtomicType*) as xs:anyAtomicType?
 //
 // $argが空シーケンスならば空シーケンスを返す。
@@ -1198,7 +1176,7 @@ fn fn_avg(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.4.3 fn:max
+// 14.4.3 fn:max
 // fn:max($arg as xs:anyAtomicType*) as xs:anyAtomicType?
 // fn:max($arg as xs:anyAtomicType*, $collation as string) as xs:anyAtomicType?
 //
@@ -1219,7 +1197,7 @@ fn fn_max(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.4.4 fn:min
+// 14.4.4 fn:min
 // fn:min($arg as xs:anyAtomicType*) as xs:anyAtomicType?
 // fn:min($arg as xs:anyAtomicType*, $collation as string) as xs:anyAtomicType?
 //
@@ -1240,7 +1218,7 @@ fn fn_min(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.4.5 fn:sum
+// 14.4.5 fn:sum
 // fn:sum($arg as xs:anyAtomicType*) as xs:anyAtomicType
 // fn:sum($arg as xs:anyAtomicType*,
 //        $zero as xs:anyAtomicType?) as xs:anyAtomicType?
@@ -1270,27 +1248,82 @@ fn fn_sum(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// 15.5 Functions and Operators that Generate Sequences
-//          id
-//          idref
-//          doc
-//          doc_available
-//          collection
+// 14.5 Functions on Node Identifiers
+//
+// ---------------------------------------------------------------------
+// 14.6 Functions Giving Access to External Information
+//
+// ---------------------------------------------------------------------
+// 14.7 Parsing and Serializing
 //
 
 // ---------------------------------------------------------------------
-// 16 Context Functions
+// 15 Context Functions
 //
-fn fn_position(_args: &Vec<&XSequence>, eval_env: &EvalEnv) -> Result<XSequence, Box<Error>> {
+
+// ---------------------------------------------------------------------
+// 15.1 fn:position
+//
+fn fn_position(_args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
     return Ok(new_singleton_integer(usize_to_i64(eval_env.get_position())));
 }
 
-fn fn_last(_args: &Vec<&XSequence>, eval_env: &EvalEnv) -> Result<XSequence, Box<Error>> {
+// ---------------------------------------------------------------------
+// 15.2 fn:last
+//
+fn fn_last(_args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
     return Ok(new_singleton_integer(usize_to_i64(eval_env.get_last())));
 }
 
 // ---------------------------------------------------------------------
-// 17 Casting
+// 16 Higher-Order Functions
+//
+// ---------------------------------------------------------------------
+// 16.2.1 fn:for-each
+// fn:for-each($seq as item()*,
+//             $action as function(item()) as item()*) as item()*
+//
+fn fn_for_each(args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    let action_xnode = args[1].get_singleton_xnodeptr()?;
+    let mut result = new_xsequence();
+    for xitem in args[0].iter() {
+        let argument_xseq = new_singleton(xitem);
+        let result_xseq = call_function(
+                    &action_xnode, vec!{argument_xseq}, eval_env)?;
+        result.append(&result_xseq);
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
+// 16.2.2 fn:filter
+// fn:filter($seq as item()*,
+//           $f as function(item()) as xs:boolean) as item()*
+//
+fn fn_filter(args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    let func_xnode = args[1].get_singleton_xnodeptr()?;
+    let mut result = new_xsequence();
+    for xitem in args[0].iter() {
+        let argument_xseq = new_singleton(xitem);
+        let result_xseq = call_function(
+                    &func_xnode, vec!{argument_xseq}, eval_env)?;
+        if result_xseq.effective_boolean_value()? == true {
+            result.push(&xitem);
+        }
+    }
+    return Ok(result);
+}
+
+
+
+// ---------------------------------------------------------------------
+// 17 Maps and Arrays
+// ---------------------------------------------------------------------
+// 18 Constructor Functions
+// ---------------------------------------------------------------------
+// 19 Casting
 // ---------------------------------------------------------------------
 //
 
@@ -1395,7 +1428,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 6.4.1 fn:abs
+    // 4.4.1 fn:abs
     //
     #[test]
     fn test_fn_abs() {
@@ -1412,7 +1445,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 6.4.2 fn:ceiling
+    // 4.4.2 fn:ceiling
     //
     #[test]
     fn test_fn_ceiling() {
@@ -1430,7 +1463,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 6.4.3 fn:floor
+    // 4.4.3 fn:floor
     //
     #[test]
     fn test_fn_floor() {
@@ -1448,7 +1481,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 6.4.4 fn:round
+    // 4.4.4 fn:round
     //
     #[test]
     fn test_fn_round() {
@@ -1468,7 +1501,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.2.1 fn:codepoints-to-string
+    // 5.2.1 fn:codepoints-to-string
     //
     #[test]
     fn test_fn_codepoints_to_string() {
@@ -1483,7 +1516,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.2.2 fn:string-to-codepoints
+    // 5.2.2 fn:string-to-codepoints
     //
     #[test]
     fn test_fn_string_to_codepoints() {
@@ -1499,7 +1532,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.3.2 fn:compare
+    // 5.3.6 fn:compare
     //
     #[test]
     fn test_fn_compare() {
@@ -1514,7 +1547,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.1 fn:concat
+    // 5.4.1 fn:concat
     //
     #[test]
     fn test_fn_concat() {
@@ -1532,7 +1565,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.2 fn:string-join
+    // 5.4.2 fn:string-join
     //
     #[test]
     fn test_fn_string_join() {
@@ -1551,7 +1584,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.3 fn:substring
+    // 5.4.3 fn:substring
     //
     #[test]
     fn test_fn_substring() {
@@ -1580,7 +1613,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.4 fn:string-length
+    // 5.4.4 fn:string-length
     //
     #[test]
     fn test_fn_string_length() {
@@ -1595,7 +1628,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.5 fn:normalize-space
+    // 5.4.5 fn:normalize-space
     //
     #[test]
     fn test_fn_normalize_space() {
@@ -1610,7 +1643,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.7 fn:upper-case
+    // 5.4.7 fn:upper-case
     //
     #[test]
     fn test_fn_upper_case() {
@@ -1625,7 +1658,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.8 fn:lower-case
+    // 5.4.8 fn:lower-case
     //
     #[test]
     fn test_fn_lower_case() {
@@ -1640,7 +1673,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.4.9 fn:translate
+    // 5.4.9 fn:translate
     //
     #[test]
     fn test_fn_translate() {
@@ -1655,7 +1688,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.5.1 fn:contains
+    // 5.5.1 fn:contains
     //
     #[test]
     fn test_fn_contains() {
@@ -1673,7 +1706,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.5.2 fn:starts-with
+    // 5.5.2 fn:starts-with
     //
     #[test]
     fn test_fn_starts_with() {
@@ -1691,7 +1724,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.5.3 fn:ends-with
+    // 5.5.3 fn:ends-with
     //
     #[test]
     fn test_fn_ends_with() {
@@ -1709,7 +1742,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.5.4 fn:substring-before
+    // 5.5.4 fn:substring-before
     //
     #[test]
     fn test_fn_substring_before() {
@@ -1724,7 +1757,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 7.5.5 fn:substring-after
+    // 5.5.5 fn:substring-after
     //
     #[test]
     fn test_fn_substring_after() {
@@ -1739,7 +1772,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 14.3 fn:namespace-uri
+    // 13.3 fn:namespace-uri
     //
     #[test]
     fn test_namespace_uri() {
@@ -1789,7 +1822,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 14.5 fn:lang
+    // 13.4 fn:lang
     //
     #[test]
     fn test_fn_lang() {
@@ -1824,7 +1857,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 14.9 fn:root
+    // 13.5 fn:root
     //
     #[test]
     fn test_fn_root() {
@@ -1843,23 +1876,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.1.3 fn:index-of
-    //
-    #[test]
-    fn test_fn_index_of() {
-        let xml = compress_spaces(r#"
-<root base="base">
-</root>
-        "#);
-        subtest_eval_xpath("fn_index_of", &xml, &[
-            ( "index-of((10, 20, 30, 40), 25)", "()" ),
-            ( "index-of((10, 20, 30, 30, 20, 10), 20)", "(2, 5)" ),
-            ( "index-of(('a', 'sport', 'and', 'a', 'pastime'), 'a')", "(1, 4)" ),
-        ]);
-    }
-
-    // -----------------------------------------------------------------
-    // 15.1.4 fn:empty
+    // 14.1.1 fn:empty
     //
     #[test]
     fn test_fn_empty() {
@@ -1874,7 +1891,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.1.5 fn:exists
+    // 14.1.2 fn:exists
     //
     #[test]
     fn test_fn_exists() {
@@ -1889,7 +1906,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.1.7 fn:insert-before
+    // 14.1.5 fn:insert-before
     //
     #[test]
     fn test_fn_insert_before() {
@@ -1908,7 +1925,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.1.8 fn:remove
+    // 14.1.6 fn:remove
     //
     #[test]
     fn test_fn_remove() {
@@ -1924,7 +1941,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.1.9 fn:reverse
+    // 14.1.7 fn:reverse
     //
     #[test]
     fn test_fn_reverse() {
@@ -1939,7 +1956,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.1.10 fn:subsequence
+    // 14.1.8 fn:subsequence
     //
     #[test]
     fn test_fn_subsequence() {
@@ -1957,7 +1974,23 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.2.1 fn:zero-or-one
+    // 14.2.2 fn:index-of
+    //
+    #[test]
+    fn test_fn_index_of() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_index_of", &xml, &[
+            ( "index-of((10, 20, 30, 40), 25)", "()" ),
+            ( "index-of((10, 20, 30, 30, 20, 10), 20)", "(2, 5)" ),
+            ( "index-of(('a', 'sport', 'and', 'a', 'pastime'), 'a')", "(1, 4)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 14.3.1 fn:zero-or-one
     //
     #[test]
     fn test_fn_zero_or_one() {
@@ -1973,7 +2006,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.2.2 fn:one-or-more
+    // 14.3.2 fn:one-or-more
     //
     #[test]
     fn test_fn_one_or_more() {
@@ -1989,7 +2022,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.2.3 fn:exactly-one
+    // 14.3.3 fn:exactly-one
     //
     #[test]
     fn test_fn_exactly_one() {
@@ -2005,7 +2038,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.4.2 fn:avg
+    // 14.4.2 fn:avg
     //
     #[test]
     fn test_fn_avg() {
@@ -2022,7 +2055,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.4.3 fn:max
+    // 14.4.3 fn:max
     //
     #[test]
     fn test_fn_max() {
@@ -2039,7 +2072,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.4.4 fn:min
+    // 14.4.4 fn:min
     //
     #[test]
     fn test_fn_min() {
@@ -2056,7 +2089,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 15.4.5 fn:sum
+    // 14.4.5 fn:sum
     //
     #[test]
     fn test_fn_sum() {
@@ -2075,7 +2108,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 16.1 fn:position
+    // 15.1 fn:position
     //
     #[test]
     fn test_fn_position() {
@@ -2112,7 +2145,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------
-    // 16.2 fn:last
+    // 15.2 fn:last
     //
     #[test]
     fn test_fn_last() {
@@ -2136,6 +2169,36 @@ mod test {
             ( "/root/a[position()=last()-1]", r#"(<a id="2">)"# ),
             ( "/root/a[position()=last()-1]/b[position()=last()-2]", r#"(<b id="1">)"# ),
             ( "/root/a[position()=last()-1]/b[position()=last()-2]/c[position()=last()]", r#"(<c id="3">)"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 16.2.1 fn:for-each
+    //
+    #[test]
+    fn test_fn_for_each() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("fn_for_each", &xml, &[
+            ( "for-each(1 to 4, function($x as integer) { $x * $x })", "(1, 4, 9, 16)" ),
+            ( r#"for-each(("john", "jane"), fn:string-to-codepoints#1)"#,
+                        "(106, 111, 104, 110, 106, 97, 110, 101)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 16.2.2 fn:filter
+    //
+    #[test]
+    fn test_fn_filter() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("fn_filter", &xml, &[
+            ( "filter(1 to 10, function($a) { $a mod 2 = 0 })", "(2, 4, 6, 8, 10)" ),
         ]);
     }
 }
