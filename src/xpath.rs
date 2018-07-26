@@ -17,15 +17,10 @@
 //!
 //! cf. <a href="../dom/index.html">Module amxml::dom</a> -&gt; <a href="../dom/struct.NodePtr.html">Struct NodePtr</a> -&gt; <a href="../dom/struct.NodePtr.html#methods">Methods</a>.
 //!
-//! # New features in Version 0.5.0
+//! # New features in Version 0.5.1
 //!
-//! - String concatenation operator
-//! - Map operator
-//! - Arrow operator
-//! - Let expression
-//! - Inline function
-//! - Named function reference
-//! - Higher order function: for-each, filter
+//! - map/array constructor
+//! - map/array lookup (function call syntax)
 //!
 //! ### Notes
 //!
@@ -58,8 +53,7 @@
 //!
 //! ### Features that are not implemented yet
 //!
-//! - Argument Placeholder
-//! - map, array
+//! - Lookup / UnaryLookup
 //! - instance of
 //! - treat as
 //! - KindTest: SchemaElementTest | SchemaAttributeTest | DocumentTest
@@ -143,7 +137,7 @@ impl NodePtr {
     // =================================================================
     // XML構文木のあるノードを起点として、xpathに合致する各ノードに対して
     // 函数fnの処理を施す。
-    /// Applies func to each nodes that match with xpath.
+    /// Applies func to each node that match with xpath.
     ///
     /// # Examples
     ///

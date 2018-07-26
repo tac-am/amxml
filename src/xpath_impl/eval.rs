@@ -680,10 +680,19 @@ fn evaluate_xnode(xseq: &XSequence, xnode: &XNodePtr,
         },
 
         XNodeType::InlineFunction |
-        XNodeType::NamedFunctionRef => {
+        XNodeType::NamedFunctionRef |
+        XNodeType::PartialFunctionCall => {
             // インライン函数 | 名前付き函数参照:
             // この時点では評価せず、シングルトンとして包んで返す。
             return Ok(new_singleton_xnodeptr(&xnode));
+        },
+
+        XNodeType::Map |
+        XNodeType::SquareArray |
+        XNodeType::CurlyArray => {
+            // マップ | 配列 (これも函数の一種として扱う)
+            let xitem = convert_xnode_to_map_array(&xnode, &xseq, eval_env)?;
+            return Ok(new_singleton(&xitem));
         },
 
         XNodeType::VarRef => {
@@ -1123,7 +1132,7 @@ fn apply_postfix(xseq: &XSequence,
                             &get_left(&curr_xnode), true, eval_env)?;
             },
             XNodeType::ArgumentListTop => {
-                curr_xseq = evaluate_inline_func(xseq, &curr_xseq,
+                curr_xseq = apply_argument(xseq, &curr_xseq,
                                     &curr_xnode, eval_env)?;
             },
             _ => {
@@ -1235,9 +1244,12 @@ fn filter_by_predicate(xseq: &XSequence, xnode: &XNodePtr,
 }
 
 // ---------------------------------------------------------------------
-// インライン函数を実行する。
+// インライン函数/マップ/配列に、引数を適用する。
 // xseq: 引数の値を評価する際、対象とするシーケンス (文脈ノード)。
-// curr_xseq: シングルトン (XItem: InlineFunction型のXNodePtr)。
+// curr_xseq: シングルトン。
+//            XItem: 典型的にはInlineFunction型のXNodePtr。
+//            また、MapやSquareArrayも函数であって、キーや指標を
+//            引数として渡し、値を取り出すことができる。
 //            このXNodePtrを取り出し、インライン函数として実行する。
 // InlineFunction --- ReturnType ------- Param ------- Param ---...
 //       |                |            (varname)     (varname)
@@ -1262,16 +1274,9 @@ fn filter_by_predicate(xseq: &XSequence, xnode: &XNodePtr,
 //
 // eval_env: 評価環境。
 //
-fn evaluate_inline_func(xseq: &XSequence, curr_xseq: &XSequence,
+fn apply_argument(xseq: &XSequence, curr_xseq: &XSequence,
                 curr_xnode: &XNodePtr,
                 eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
-
-    let inline_func_xnode = curr_xseq.get_singleton_xnodeptr()?;
-    if get_xnode_type(&inline_func_xnode) != XNodeType::InlineFunction {
-        return Err(cant_occur!(
-            "call_inline_func: 単独のインライン函数でない: {:?}。",
-                get_xnode_type(&inline_func_xnode)));
-    }
 
     let arg_xnode = get_left(&curr_xnode);
 
@@ -1283,14 +1288,56 @@ fn evaluate_inline_func(xseq: &XSequence, curr_xseq: &XSequence,
         argument_xseq.push(val);
         curr_arg_top = get_right(&curr_arg_top);
     }
-    return call_inline_func(&inline_func_xnode,
-                argument_xseq, eval_env);
+
+    // -----------------------------------------------------------------
+    // インライン函数
+    //
+    if let Ok(inline_func_xnode) = curr_xseq.get_singleton_xnodeptr() {
+        match get_xnode_type(&inline_func_xnode) {
+            XNodeType::InlineFunction => {
+                return call_inline_func(&inline_func_xnode,
+                            argument_xseq, xseq, eval_env);
+            },
+            _ => {}
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // マップ
+    //
+    if let Ok(map_item) = curr_xseq.get_singleton_map() {
+        let key = argument_xseq[0].get_singleton_item()?;
+        if let Some(v) = map_item.map_get(&key) {
+            return Ok(v);
+        } else {
+            return Err(dynamic_error!(
+                    "map_lookup: key = {}: 値が見つからない。", key));
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 配列
+    //
+    if let Ok(array_item) = curr_xseq.get_singleton_array() {
+        let index_item = argument_xseq[0].get_singleton_item()?;
+        if let Some(v) = array_item.array_get(&index_item) {
+            return Ok(v);
+        } else {
+            return Err(dynamic_error!(
+                "Array index ({}) out of bounds.", index_item));
+        }
+    }
+
+    return Err(cant_occur!(
+                "apply_argument: インライン函数/マップ/配列でない。"));
+
 }
 
 // ---------------------------------------------------------------------
 //
 fn call_inline_func(inline_func_xnode: &XNodePtr,
                 argument_xseq: Vec<XSequence>,
+                context_xseq: &XSequence,
                 eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     // -----------------------------------------------------------------
@@ -1327,8 +1374,7 @@ fn call_inline_func(inline_func_xnode: &XNodePtr,
     // -----------------------------------------------------------------
     // インライン函数を実行する。
     //
-    let xseq = new_xsequence();
-    let value = evaluate_xnode(&xseq, &func_body_xnode, eval_env)?;
+    let value = evaluate_xnode(context_xseq, &func_body_xnode, eval_env)?;
 
     // -----------------------------------------------------------------
     // 変数 (仮引数) を削除する。
@@ -1345,14 +1391,15 @@ fn call_inline_func(inline_func_xnode: &XNodePtr,
 // ---------------------------------------------------------------------
 // 名前付き函数参照を、引数を渡して呼び出す。
 //
-fn call_named_func(named_function_ref_xnode: &XNodePtr,
+fn call_named_func(func_xnode: &XNodePtr,
                 argument_xseq: Vec<XSequence>,
+                context_xseq: &XSequence,
                 eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     // -----------------------------------------------------------------
     // 函数定義の実体を取り出す。
     //
-    let func_name = get_xnode_name(&named_function_ref_xnode);
+    let func_name = get_xnode_name(&func_xnode);
     let v: Vec<&str> = func_name.split("#").collect();
     let arity = atoi(v[1]) as usize;
     if arity != argument_xseq.len() {
@@ -1361,23 +1408,83 @@ fn call_named_func(named_function_ref_xnode: &XNodePtr,
                 func_name, argument_xseq.len()));
     }
 
-    let xseq = new_xsequence();
-    return evaluate_function(&v[0], &argument_xseq, &xseq, eval_env);
+    return evaluate_function(&v[0], &argument_xseq, context_xseq, eval_env);
 }
 
 // ---------------------------------------------------------------------
-// インライン函数または名前付き函数参照を呼び出す。
+// 静的函数の部分函数呼び出し。
+//
+// func_xnode: 部分函数呼び出しの構文木
+//             引数のうちArgumentTopは、普通の静的函数と同様、
+//             文脈ノードに対してleft以下を評価し、引数として函数に渡す。
+//             ArgumentPlaceholderである場合はargument_xseq[i]を
+//             引数として函数に渡す。
+//
+// PartialFunctionCall --- ArgumentTop --- ArgumentPlaceholder ---...
+//    (func_name)               |                  (第2引数)
+//                             ... (第1引数)
+//
+// argument_xseq: 長さはArgumentPlaceholderの個数と同じ。
+//                argument_xseq[i]をArgumentPlaceholder部分の引数として
+//                函数に渡す。
+//
+// context_xseq: 文脈シーケンス。
+//               ArgumentTopである引数は、文脈シーケンスに対して評価する。
+//               関数の評価も文脈シーケンスに対しておこなう。
+//
+// eval_env: 評価環境 (変数の値など)。
+//
+fn call_partial_func(func_xnode: &XNodePtr,
+                argument_xseq: Vec<XSequence>,
+                context_xseq: &XSequence,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+
+    let mut args_array: Vec<XSequence> = vec!{};
+    let mut curr_xnode = get_right(&func_xnode);
+    let mut i = 0;
+    while ! is_nil_xnode(&curr_xnode) {
+        match get_xnode_type(&curr_xnode) {
+            XNodeType::ArgumentTop => {
+                let arg = evaluate_xnode(context_xseq, &get_left(&curr_xnode), eval_env)?;
+                args_array.push(arg);
+            },
+            XNodeType::ArgumentPlaceholder => {
+                if i >= argument_xseq.len() {
+                    return Err(dynamic_error!("函数呼び出しの「?」に渡すべき引数が足りない。"));
+                }
+                args_array.push(argument_xseq[i].clone());
+                i += 1;
+            },
+            _ => {
+                return Err(cant_occur!("call_partial_func: ArgumentTopでもArgumentPlaceholderでもでない。"));
+            }
+        }
+        curr_xnode = get_right(&curr_xnode);
+    }
+
+    return evaluate_function(&get_xnode_name(&func_xnode),
+            &mut args_array, context_xseq, eval_env);
+
+}
+
+// ---------------------------------------------------------------------
+// 函数呼び出し。
+// インライン函数、名前付き函数参照、部分函数。
 //
 pub fn call_function(func_xnode: &XNodePtr,
                 argument_xseq: Vec<XSequence>,
+                context_xseq: &XSequence,
                 eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     match get_xnode_type(&func_xnode) {
         XNodeType::InlineFunction => {
-            return call_inline_func(func_xnode, argument_xseq, eval_env);
+            return call_inline_func(func_xnode, argument_xseq, context_xseq, eval_env);
         },
         XNodeType::NamedFunctionRef => {
-            return call_named_func(func_xnode, argument_xseq, eval_env);
+            return call_named_func(func_xnode, argument_xseq, context_xseq, eval_env);
+        },
+        XNodeType::PartialFunctionCall => {
+            return call_partial_func(func_xnode, argument_xseq, context_xseq, eval_env);
         },
         _ => {
             return Err(cant_occur!("call_h_function: XNodeType = {:?}",
@@ -1473,6 +1580,103 @@ fn match_occurence(xseq: &XSequence, indicator: &str) -> Result<bool, Box<Error>
         _   => return Err(cant_occur!(
                         "match_occurence: bad indicator \"{}\".",
                         indicator)),
+    }
+}
+
+// ---------------------------------------------------------------------
+// XNodeType::{Map,SquareArray,CurlyArray} が指す内容を
+// XItem::{XIMap,XIArray} に変換する。
+//
+fn convert_xnode_to_map_array(xnode: &XNodePtr,
+                context_xseq: &XSequence,
+                eval_env: &mut EvalEnv) -> Result<XItem, Box<Error>> {
+    match get_xnode_type(&xnode) {
+        XNodeType::Map => {
+            // ---------------------------------------------------------
+            // マップの実体を取り出す。
+            //    Map
+            //     |
+            // MapConsruct -------------- MapConstruct ---...
+            //     |                          |
+            //  MapEntry --- (value)       MapEntry --- (value)
+            //     |                          |
+            //   (key)                      (key)
+            //
+            let map_construct_xnode = get_left(&xnode);
+            let mut curr = map_construct_xnode.clone();
+            let mut vec_item: Vec<(XItem, XSequence)> = vec!{};
+            while ! is_nil_xnode(&curr) {
+                if get_xnode_type(&curr) != XNodeType::MapConstruct {
+                    return Err(cant_occur!(
+                    "convert_xnode_to_map_array[Map]: xnode = {}, not MapConstruct",
+                        get_xnode_type(&curr)));
+                }
+
+                let map_entry_xnode = get_left(&curr);
+                if get_xnode_type(&map_entry_xnode) != XNodeType::MapEntry {
+                    return Err(cant_occur!(
+                    "convert_xnode_to_map_array[Map]: xnode = {}, not MapEntry",
+                        get_xnode_type(&map_entry_xnode)));
+                }
+
+                let map_key_xnode = get_left(&map_entry_xnode);
+                let key = evaluate_xnode(context_xseq, &map_key_xnode, eval_env)?.get_singleton_item()?;
+
+                let map_value_xnode = get_right(&map_entry_xnode);
+                let val = evaluate_xnode(context_xseq, &map_value_xnode, eval_env)?;
+                vec_item.push((key, val));
+
+                curr = get_right(&curr);
+            }
+            return Ok(new_xitem_map(&vec_item));
+
+        },
+
+        XNodeType::SquareArray => {
+            // ---------------------------------------------------------
+            // 配列の実体を取り出す。
+            // SquareArray
+            //     |
+            //  ArrayEntry --- ArrayEntry ---...
+            //     |              |
+            //   (expr)         (expr)
+            //
+            let array_entry_xnode = get_left(&xnode);
+            let mut curr = array_entry_xnode.clone();
+            let mut vec_item: Vec<XSequence> = vec!{};
+            while ! is_nil_xnode(&curr) {
+                if get_xnode_type(&curr) != XNodeType::ArrayEntry {
+                    return Err(cant_occur!(
+                    "convert_xnode_to_map_array[SquareArray]: xnode = {}, not ArrayEntry",
+                        get_xnode_type(&curr)));
+                }
+
+                let value_xnode = get_left(&curr);
+                let val = evaluate_xnode(context_xseq, &value_xnode, eval_env)?;
+                vec_item.push(val);
+                curr = get_right(&curr);
+            }
+            return Ok(new_xitem_array(&vec_item));
+        },
+
+        XNodeType::CurlyArray => {
+            // ---------------------------------------------------------
+            // 配列の実体を取り出す。
+            //
+            let array_entry_xnode = get_left(&xnode);
+            let val_xseq = evaluate_xnode(context_xseq, &array_entry_xnode, eval_env)?;
+            let mut vec_item: Vec<XSequence> = vec!{};
+            for item in val_xseq.iter() {
+                vec_item.push(new_singleton(item));
+            }
+            return Ok(new_xitem_array(&vec_item));
+        },
+
+        _ => {
+            return Err(cant_occur!(
+                "convert_xnode_to_map_array: xnode = {}",
+                get_xnode_type(&xnode)));
+        },
     }
 }
 
@@ -1955,5 +2159,70 @@ mod test {
         ]);
     }
 
+    // -----------------------------------------------------------------
+    // PartialFunctionCall / ArgumentPlaceholder
+    //
+    #[test]
+    fn test_partial_function_call() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+
+        subtest_eval_xpath("partial_function_call", &xml, &[
+            ( r#"for-each(("a", "b"), fn:starts-with(?, "a")) "#,
+                        "(true, false)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // Map
+    //
+    #[test]
+    fn test_map_lookup() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+
+        subtest_eval_xpath("map_lookup", &xml, &[
+            ( r#"
+                let $week := map {
+                    "Su" : "Sunday",
+                    "Mo" : "Monday"
+                } return $week("Su")
+              "#, r#"("Sunday")"# ),
+            ( r#"
+                let $bk := map {
+                    "a" : map {
+                        "a1" : "A1",
+                        "a2" : "A2"
+                    },
+                    "b" : map {
+                        "b1" : "B1",
+                        "b2" : "B2"
+                    }
+                } return $bk("a")("a2")
+              "#, r#"("A2")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // Array
+    //
+    #[test]
+    fn test_array_lookup() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+
+        subtest_eval_xpath("array_lookup", &xml, &[
+            ( r#"[ 1, 3, 5, 7 ](4)"#, "(7)" ),
+            ( r#"[ [1, 2, 3], [4, 5, 6]](2)"#, "([(4), (5), (6)])" ),
+            ( r#"[ [1, 2, 3], [4, 5, 6]](2)(2)"#, "(5)" ),
+            ( r#"array{ (1), (2, 3), (4, 5) }(4)"#, "(4)" ),
+        ]);
+    }
 }
 

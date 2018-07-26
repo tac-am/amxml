@@ -22,7 +22,6 @@ pub enum TType {
     Nop,
     // 無効なトークン
     Name,
-//    NodeType,
     AxisName,
     SlashSlash,
     Slash,
@@ -104,6 +103,8 @@ pub enum TType {
     TextTest,
     NamespaceNodeTest,
     AnyKindTest,
+    MapTest,
+    ArrayTest,
     BracedURILiteral,
     OperatorConcat,
     Sharp,
@@ -264,11 +265,6 @@ impl Lexer {
         }
         lexer.push_token(TType::EOF, "");
         lexer.index = 1;
-
-        // -------------------------------------------------------------
-        // InnerName ":" InnerName -> InnerName と縮約
-        // BracedURILiteral InnerName -> URIQualifiedName と縮約
-        //
 
         // -------------------------------------------------------------
         // 特別なトークン規則 (1)
@@ -513,8 +509,8 @@ impl Lexer {
     // 所定のトークン種に書き替える。
     //
     fn rewrite_name_and_symbol(&mut self) {
-        let name_and_symbol_tbl: [(&str, TType, TType); 35] = [
-            ( "array",              TType::LeftParen, TType::Array ),
+        let name_and_symbol_tbl: [(&str, TType, TType); 37] = [
+            ( "array",              TType::LeftParen, TType::ArrayTest ),
             ( "attribute",          TType::LeftParen, TType::AttributeTest ),
             ( "comment",            TType::LeftParen, TType::CommentTest ),
             ( "document-node",      TType::LeftParen, TType::DocumentTest ),
@@ -523,7 +519,7 @@ impl Lexer {
             ( "function",           TType::LeftParen, TType::Function ),
             ( "if",                 TType::LeftParen, TType::If ),
             ( "item",               TType::LeftParen, TType::Item ),
-            ( "map",                TType::LeftParen, TType::Map ),
+            ( "map",                TType::LeftParen, TType::MapTest ),
             ( "namespace-node",     TType::LeftParen, TType::NamespaceNodeTest ),
             ( "node",               TType::LeftParen, TType::AnyKindTest ),
             ( "processing-instruction", TType::LeftParen, TType::PITest ),
@@ -549,8 +545,9 @@ impl Lexer {
             ( "preceding",          TType::ColonColon, TType::AxisName ),
             ( "preceding-sibling",  TType::ColonColon, TType::AxisName ),
             ( "self",               TType::ColonColon, TType::AxisName ),
+            ( "map",                TType::LeftCurly,  TType::Map ),
+            ( "array",              TType::LeftCurly,  TType::Array ),
         ];
-//                        // "map "{"
 
         let mut i = 1;
         while self.tokens[i].t_type != TType::EOF {

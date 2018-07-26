@@ -135,6 +135,32 @@ impl XSequence {
     }
 
     // -----------------------------------------------------------------
+    // シングルトンかつマップであれば、そのマップを返す。
+    //
+    pub fn get_singleton_map(&self) -> Result<XSeqMap, Box<Error>> {
+        let item = self.get_singleton_item()?;
+        match item {
+            XItem::XIMap{value} => return Ok(value.clone()),
+            _ => {},
+        }
+
+        return Err(type_error!("This sequence must be singleton map."));
+    }
+
+    // -----------------------------------------------------------------
+    // シングルトンかつ配列であれば、その配列を返す。
+    //
+    pub fn get_singleton_array(&self) -> Result<XSeqArray, Box<Error>> {
+        let item = self.get_singleton_item()?;
+        match item {
+            XItem::XIArray{value} => return Ok(value.clone()),
+            _ => {},
+        }
+
+        return Err(type_error!("This sequence must be singleton array."));
+    }
+
+    // -----------------------------------------------------------------
     // シングルトンかつ文字列であれば、その文字列を返す。
     //
     pub fn get_singleton_string(&self) -> Result<String, Box<Error>> {

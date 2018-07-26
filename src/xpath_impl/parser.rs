@@ -115,6 +115,14 @@ pub enum XNodeType {
     ReturnType,
     ArgumentListTop,
     NamedFunctionRef,
+    PartialFunctionCall,
+    ArgumentPlaceholder,
+    Map,
+    MapConstruct,
+    MapEntry,
+    SquareArray,
+    CurlyArray,
+    ArrayEntry,
 }
 
 // =====================================================================
@@ -250,7 +258,7 @@ macro_rules! return_if_nil {
 }
 
 // ---------------------------------------------------------------------
-// nil でである xnode が得られた場合、エラーとする。
+// nil である xnode が得られた場合、エラーとする。
 //
 macro_rules! error_if_nil {
     ( $lex: expr, $xnode: expr, $msg: expr ) => {
@@ -1754,7 +1762,9 @@ fn parse_postfix_list(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
-// [ 49c] Postfix ::= Predicate | ArgumentList | Lookup
+// [ 49c] Postfix ::= Predicate
+//                  | ArgumentList
+//                  | Lookup                                          ☆
 //
 fn parse_postfix(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     match lex.next_token().get_type() {
@@ -1785,8 +1795,8 @@ fn parse_postfix(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 //                     | ContextItemExpr
 //                     | FunctionCall
 //                     | FunctionItemExpr
-//                     | MapConstructor                               ☆
-//                     | ArrayConstructor                             ☆
+//                     | MapConstructor
+//                     | ArrayConstructor
 //                     | UnaryLookup                                  ☆
 //
 fn parse_primary_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
@@ -1807,6 +1817,12 @@ fn parse_primary_expr(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     return_if_non_nil!(xnode);
 
     let xnode = parse_function_item_expr(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_map_constructor(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_array_constructor(lex)?;
     return_if_non_nil!(xnode);
 
     return Ok(new_nil_xnode());
@@ -2089,25 +2105,173 @@ fn parse_function_body(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
 // ---------------------------------------------------------------------
 // [ 69] MapConstructor ::= "map" "{" (MapConstructorEntry ("," MapConstructorEntry)*)? "}"
+// これを次のように分解する。
+// [ 69a] MapConstructor ::= "map" "{" MapConstructorEntries? "}"
+// [ 69b] MapConstructorEntries ::=
+//                     MapConstructorEntry ("," MapConstructorEntry)*
+//       Map
+//        |
+//   MapConstruct ------- MapConstruct ------- MapConstruct
+//        |                    |                    |
+//     MepEntry -- (value)  MapEntry -- (value)  MapEntry -- (value)
+//        |                    |                    |
+//      (key)                (key)                (key)
+//
+fn parse_map_constructor(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::Map);
+    lex.get_token();
+
+    error_if_not_ttype!(lex, TType::LeftCurly, "{}: マップを開く左波括弧が必要。");
+    lex.get_token();
+
+    let entries_xnode = parse_map_constructor_entries(lex)?;
+
+    error_if_not_ttype!(lex, TType::RightCurly, "{}: マップを閉じる右波括弧が必要。");
+    lex.get_token();
+
+    let map_xnode = new_xnode(XNodeType::Map, "");
+    assign_as_left(&map_xnode, &entries_xnode);
+
+    return Ok(map_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [ 69b] MapConstructorEntries ::=
+//                     MapConstructorEntry ("," MapConstructorEntry)*
+//
+fn parse_map_constructor_entries(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let xnode = parse_map_constructor_entry(lex)?;
+    return_if_nil!(xnode);
+
+    let top_xnode = new_xnode(XNodeType::MapConstruct, "");
+    assign_as_left(&top_xnode, &xnode);
+    let mut curr_xnode = top_xnode.clone();
+
+    while lex.next_token().get_type() == TType::Comma {
+        lex.get_token();
+        let entry_xnode = parse_map_constructor_entry(lex)?;
+        let entry_list_xnode = new_xnode(XNodeType::MapConstruct, "");
+        assign_as_left(&entry_list_xnode, &entry_xnode);
+        assign_as_right(&curr_xnode, &entry_list_xnode);
+        curr_xnode = entry_list_xnode.clone();
+    }
+    return Ok(top_xnode);
+}
+
+// ---------------------------------------------------------------------
 // [ 70] MapConstructorEntry ::= MapKeyExpr ":" MapValueExpr
 // [ 71] MapKeyExpr ::= ExprSingle
 // [ 72] MapValueExpr ::= ExprSingle
 //
+//  MapEntry --- (value)
+//     |
+//   (key)
+//
+fn parse_map_constructor_entry(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let key_xnode = parse_expr_single(lex)?;
+    return_if_nil!(key_xnode);
+
+    error_if_not_ttype!(lex, TType::Colon, "{}: MapConstructorのコロンが必要。");
+    lex.get_token();
+
+    let value_xnode = parse_expr_single(lex)?;
+    error_if_nil!(lex, value_xnode, "{}: マップの値を表す式が必要。");
+
+    let xnode = new_xnode(XNodeType::MapEntry, "");
+    assign_as_left(&xnode, &key_xnode);
+    assign_as_right(&xnode, &value_xnode);
+    return Ok(xnode);
+}
+
 // ---------------------------------------------------------------------
 // [ 73] ArrayConstructor ::= SquareArrayConstructor | CurlyArrayConstructor
+//
+fn parse_array_constructor(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let xnode = parse_curly_array_constructor(lex)?;
+    return_if_non_nil!(xnode);
+
+    let xnode = parse_square_array_constructor(lex)?;
+    return_if_non_nil!(xnode);
+
+    return Ok(new_nil_xnode());
+}
+
+// ---------------------------------------------------------------------
 // [ 74] SquareArrayConstructor ::= "[" (ExprSingle ("," ExprSingle)*)? "]"
+//
+fn parse_square_array_constructor(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::LeftBracket);
+    lex.get_token();
+
+    let array_top_xnode = parse_expr_in_array(lex)?;
+
+    error_if_not_ttype!(lex, TType::RightBracket, "{}: 配列を閉じる右角括弧が必要。");
+    lex.get_token();
+
+    let array_xnode = new_xnode(XNodeType::SquareArray, "");
+    assign_as_left(&array_xnode, &array_top_xnode);
+    return Ok(array_xnode);
+}
+
+// ---------------------------------------------------------------------
 // [ 75] CurlyArrayConstructor ::= "array" EnclosedExpr
 // [  5] EnclosedExpr ::= "{" Expr? "}"
+// [  6] Expr ::= ExprSingle ( "," ExprSingle )*
+//
+fn parse_curly_array_constructor(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    return_nil_if_not_ttype!(lex, TType::Array);
+    lex.get_token();
+
+    error_if_not_ttype!(lex, TType::LeftCurly, "{}: 配列を開く左波括弧が必要。");
+    lex.get_token();
+
+    let array_top_xnode = parse_expr(lex)?;
+
+    error_if_not_ttype!(lex, TType::RightCurly, "{}: 配列を閉じる右波括弧が必要。");
+    lex.get_token();
+
+    let array_xnode = new_xnode(XNodeType::CurlyArray, "");
+    assign_as_left(&array_xnode, &array_top_xnode);
+    return Ok(array_xnode);
+}
+
+// ---------------------------------------------------------------------
+// [  5] EnclosedExpr ::= "{" Expr? "}"
+// [  6] Expr ::= ExprSingle ( "," ExprSingle )*
+//
+//  ArrayEntry --- ArrayEntry --- ArrayEntry ---...
+//      |              |              |
+//    (expr)         (expr)         (expr)
+//
+fn parse_expr_in_array(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
+    let xnode = parse_expr_single(lex)?;
+    return_if_nil!(xnode);
+
+    let top_xnode = new_xnode(XNodeType::ArrayEntry, "");
+    assign_as_left(&top_xnode, &xnode);
+    let mut curr_xnode = top_xnode.clone();
+
+    while lex.next_token().get_type() == TType::Comma {
+        lex.get_token();
+        let expr_xnode = parse_expr_single(lex)?;
+        let entry_xnode = new_xnode(XNodeType::ArrayEntry, "");
+        assign_as_left(&entry_xnode, &expr_xnode);
+        assign_as_right(&curr_xnode, &entry_xnode);
+        curr_xnode = entry_xnode.clone();
+    }
+    return Ok(top_xnode);
+
+}
+
+// ---------------------------------------------------------------------
+// [ 53] Lookup ::= "?" KeySpecifier                                   ☆
 //
 // ---------------------------------------------------------------------
-// [ 53] Lookup ::= "?" KeySpecifier
-//
-// ---------------------------------------------------------------------
-// [ 76] UnaryLookup ::= "?" KeySpecifier
-// [ 54] KeySpecifier ::= NCName
-//                      | IntegerLiteral
-//                      | ParenthesizedExpr
-//                      | "*"
+// [ 76] UnaryLookup ::= "?" KeySpecifier                              ☆
+// [ 54] KeySpecifier ::= NCName                                       ☆
+//                      | IntegerLiteral                               ☆
+//                      | ParenthesizedExpr                            ☆
+//                      | "*"                                          ☆
 //
 
 // ---------------------------------------------------------------------
@@ -2148,8 +2312,12 @@ fn parse_function_call(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     // 引数の数を調べる。
     //
     let mut arity: usize = 0;
+    let mut is_partial_call = false;
     let mut curr = arg_node.clone();
     while ! is_nil_xnode(&curr) {
+        if get_xnode_type(&curr) == XNodeType::ArgumentPlaceholder {
+            is_partial_call = true;
+        }
         arity += 1;
         curr = get_right(&curr);
     }
@@ -2165,7 +2333,13 @@ fn parse_function_call(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
     // -------------------------------------------------------------
     //
-    let func_node = new_xnode(XNodeType::FunctionCall, &func_name);
+    let func_node = new_xnode(
+            if is_partial_call {
+                XNodeType::PartialFunctionCall
+            } else {
+                XNodeType::FunctionCall
+            },
+            &func_name);
     assign_as_right(&func_node, &arg_node);
 
     return Ok(func_node);
@@ -2181,7 +2355,8 @@ fn parse_function_call(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 //   OpEQ  -- (rhs)
 //    |
 //  (lhs)
-//                  ただし引数が0個の場合はNilを返す。
+//              ただし引数が0個の場合はNilを返す。
+//              ArgTopの代わりに、ArgumentPlaceholderになっていることもある。
 //
 fn parse_argument_list(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
@@ -2213,16 +2388,24 @@ fn parse_argument_list_sub(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
 
 // ---------------------------------------------------------------------
 // [ 64] Argument ::= ExprSingle
-//                  | ArgumentPlaceholder                               ☆
-// [ 65] ArgumentPlaceholder ::= "?"                                    ☆
+//                  | ArgumentPlaceholder
+// [ 65] ArgumentPlaceholder ::= "?"
 //
 fn parse_argument(lex: &mut Lexer) -> Result<XNodePtr, Box<Error>> {
     let xnode = parse_expr_single(lex)?;
-    return_if_nil!(xnode);
+    if ! is_nil_xnode(&xnode) {
+        let xnode_top = new_xnode(XNodeType::ArgumentTop, "");
+        assign_as_left(&xnode_top, &xnode);
+        return Ok(xnode_top);
+    }
 
-    let xnode_top = new_xnode(XNodeType::ArgumentTop, "");
-    assign_as_left(&xnode_top, &xnode);
-    return Ok(xnode_top);
+    while lex.next_token().get_type() == TType::Question {
+        lex.get_token();
+        let xnode = new_xnode(XNodeType::ArgumentPlaceholder, "?");
+        return Ok(xnode);
+    }
+
+    return Ok(new_nil_xnode());
 }
 
 // =====================================================================
@@ -2483,14 +2666,18 @@ mod test {
     #[test]
     fn test_parse() {
 
-//        let xpath = r#" 'aBcDe' => upper-case() => substring(2, 3)"#;
-                // substring(upper-case('aBcDe'), 2, 3)
-
-//        let xpath = "let $f := function($a) { $a * $a } return $f(5)";
-        let xpath = "let $f := function($a) { $a * $a } return 5 => $f()";
-
-
-
+        let xpath = r#"
+            map { "abc": map {
+                            "xyz": 12
+                        },
+                   "def": [ 8, 10, 12 ],
+                   "ghi": array {
+                        3,
+                        4,
+                        8
+                    }
+                 }
+        "#;
 
         match Lexer::new(&String::from(xpath)) {
             Ok(lex) => {

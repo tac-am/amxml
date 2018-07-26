@@ -16,6 +16,7 @@ use std::str::FromStr;
 use dom::*;
 use xmlerror::*;
 use xpath_impl::parser::*;
+use xpath_impl::xsequence::*;
 
 // ---------------------------------------------------------------------
 //
@@ -58,6 +59,12 @@ pub enum XItem {
     XItemXNodePtr {
         value: XNodePtr,
             // (内部処理用) インライン函数をXItemとして扱う。
+    },
+    XIMap {
+        value: XSeqMap,
+    },
+    XIArray {
+        value: XSeqArray,
     },
     XINode {
         value: NodePtr,
@@ -118,6 +125,54 @@ pub enum XItem {
     // XINMTOKENS,
 }
 
+// =====================================================================
+//
+#[derive(Debug, PartialEq, Clone)]
+pub struct XSeqMap {
+    v: Vec<(XItem, XSequence)>,
+}
+
+impl XSeqMap {
+    pub fn map_get(&self, key: &XItem) -> Option<XSequence> {
+        for entry in self.v.iter() {
+            let c = xitem_compare(&entry.0, &key);
+            match c {
+                Ok(c) => {
+                    if c == 0 {
+                        return Some(entry.1.clone());
+                    }
+                },
+                _ => {},
+            }
+        }
+        return None;
+    }
+}
+
+// =====================================================================
+//
+#[derive(Debug, PartialEq, Clone)]
+pub struct XSeqArray {
+    v: Vec<XSequence>,
+}
+
+impl XSeqArray {
+    pub fn array_get(&self, index: &XItem) -> Option<XSequence> {
+        let i = index.get_as_raw_integer();
+        match i {
+            Ok(i) => {
+                if 1 <= i && i <= self.v.len() as i64 {
+                    return Some(self.v[(i - 1) as usize].clone());
+                }
+            },
+            _ => {},
+        }
+        return None;
+    }
+}
+
+// =====================================================================
+//
 pub fn new_xitem_xnodeptr(xnode: &XNodePtr) -> XItem {
     return XItem::XItemXNodePtr {
         value: xnode.clone(),
@@ -127,7 +182,23 @@ pub fn new_xitem_xnodeptr(xnode: &XNodePtr) -> XItem {
 pub fn new_xitem_node(node: &NodePtr) -> XItem {
     return XItem::XINode {
         value: node.rc_clone(),
-    }
+    };
+}
+
+pub fn new_xitem_map(value: &Vec<(XItem, XSequence)>) -> XItem {
+    return XItem::XIMap {
+        value: XSeqMap {
+            v: value.clone(),
+        },
+    };
+}
+
+pub fn new_xitem_array(value: &Vec<XSequence>) -> XItem {
+    return XItem::XIArray{
+        value: XSeqArray {
+            v: value.clone(),
+        },
+    };
 }
 
 pub fn new_xitem_string(value: &str) -> XItem {
@@ -305,8 +376,30 @@ impl fmt::Display for XItem {
                     return write!(f, "false");
                 }
             },
-            _ => {
-                return write!(f, "UNKNOWN");
+            XItem::XItemXNodePtr{value} => {
+                return write!(f, "{}", value);
+            },
+            XItem::XIMap{value} => {
+                let mut s = String::from("{");
+                for (i, v) in value.v.iter().enumerate() {
+                    if i != 0 {
+                        s += &", ";
+                    }
+                    s += &format!("{} => {}", v.0, v.1);
+                }
+                s += &"}";
+                return write!(f, "{}", s);
+            },
+            XItem::XIArray{value} => {
+                let mut s = String::from("[");
+                for (i, v) in value.v.iter().enumerate() {
+                    if i != 0 {
+                        s += &", ";
+                    }
+                    s += &format!("{}", v);
+                }
+                s += &"]";
+                return write!(f, "{}", s);
             },
         }
     }
@@ -579,7 +672,6 @@ impl XItem {
         return Err(type_error!(
                 "Item {}: can't cast to boolean", self.to_string()));
     }
-
 }
 
 // ---------------------------------------------------------------------

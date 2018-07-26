@@ -23,219 +23,190 @@ fn usize_to_i64(n: usize) -> i64 {
 
 // ---------------------------------------------------------------------
 // 函数表。
-// - 実行時に、函数の実体を検索し、引数の数を検査するために使うほか、
+// - 実行時に、函数の実体を検索するために使うほか、
 // - 構文解析の時点で、函数の有無や引数の数を検査するためにも使う。
+//
+// [context-independent]
+// 大部分の函数はFUNC_TBLに登録してある。この函数は、引数のみ渡せば実行できる。
+//
+// [context-dependent] さらに限定して [focus-dependent]
+// 文脈シーケンス (context item) を暗黙の引数 (implicit argument) として
+// 渡す必要がある、または評価環境 (position、size) を渡す必要があるので、
+// FUNC_CONTEXT_TBLに登録する。
+//
+// [higher-order]
+// 函数の引数を評価するために文脈シーケンスや評価環境が必要なので、
+// FUNC_CONTEXT_TBLに登録する。
 //
 
 const M: usize = usize::MAX;
 
-const FUNC_WITH_ENV_TBL: [(
-        &str,                                       // 函数名
-        fn(&Vec<&XSequence>, &mut EvalEnv) -> Result<XSequence, Box<Error>>,
-                                                    // 函数の実体
-        usize,                                      // 引数の数: min
-        usize);                                     // 引数の数: max
-        4] = [
-// 15
-    ( "fn:position",  fn_position,  0, 0 ),
-    ( "fn:last",      fn_last,      0, 0 ),
-// 16.2
-    ( "fn:for-each",  fn_for_each,  2, 2 ),
-    ( "fn:filter",    fn_filter,    2, 2 ),
 
+const FUNC_CONTEXT_TBL: [(
+        usize,                  // 引数の個数
+        &str,                   // 函数名
+        fn(&Vec<&XSequence>, &XSequence, &mut EvalEnv) -> Result<XSequence, Box<Error>>);
+                                // 函数の実体: (引数、文脈シーケンス、評価環境)
+        14] = [
+// 2
+    ( 0, "fn:string",          fn_string_0 ),
+    ( 0, "fn:data",            fn_data_0 ),
+// 4.5
+    ( 0, "fn:number",          fn_number_0 ),
+// 5.4
+    ( 0, "fn:string-length",   fn_string_length_0 ),
+    ( 0, "fn:normalize-space", fn_normalize_space_0 ),
+// 13
+    ( 0, "fn:name",            fn_name_0 ),
+    ( 0, "fn:local-name",      fn_local_name_0 ),
+    ( 0, "fn:namespace-uri",   fn_namespace_uri_0 ),
+    ( 1, "fn:lang",            fn_lang_1 ),
+    ( 0, "fn:root",            fn_root_0 ),
+// 15
+    ( 0, "fn:position",        fn_position ),
+    ( 0, "fn:last",            fn_last ),
+// 16.2
+    ( 2, "fn:for-each",        fn_for_each ),
+    ( 2, "fn:filter",          fn_filter ),
+
+    // [focus-dependent] に該当する他の函数:
+    // fn:base-uri#0
+    // fn:document-uri#0
+    // fn:element-with-id#1
+    // fn:id#1
+    // fn:idref#1
+    // fn:path#0
 ];
 
-const FUNC_TBL: [(
-        &str,                       // 函数名
-        fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>,
-                                    // 函数の実体
-        usize,                      // 引数の数: min
-        usize,                      // 引数の数: max
-        bool);                      // 引数が不足しているとき文脈ノードを補う
-        47] = [
-// 2
-    ( "fn:string",                 fn_string,                 1, 1, true ),
-    ( "fn:data",                   fn_data,                   1, 1, false ),
-// 4.4
-    ( "fn:abs",                    fn_abs,                    1, 1, false ),
-    ( "fn:ceiling",                fn_ceiling,                1, 1, false ),
-    ( "fn:floor",                  fn_floor,                  1, 1, false ),
-    ( "fn:round",                  fn_round,                  1, 1, false ),
-// 4.5
-    ( "fn:number",                 fn_number,                 1, 1, true ),
-// 5.2.1
-    ( "fn:codepoints-to-string",   fn_codepoints_to_string,   1, 1, false ),
-    ( "fn:string-to-codepoints",   fn_string_to_codepoints,   1, 1, false ),
-// 5.3
-    ( "fn:compare",                fn_compare,                2, 3, false ),
-// 5.4
-    ( "fn:concat",                 fn_concat,                 2, M, false ),
-    ( "fn:string-join",            fn_string_join,            1, 2, false ),
-    ( "fn:substring",              fn_substring,              2, 3, false ),
-    ( "fn:string-length",          fn_string_length,          1, 1, true ),
-    ( "fn:normalize-space",        fn_normalize_space,        1, 1, true ),
-    ( "fn:upper-case",             fn_upper_case,             1, 1, false ),
-    ( "fn:lower-case",             fn_lower_case,             1, 1, false ),
-    ( "fn:translate",              fn_translate,              3, 3, false ),
-// 5.5
-    ( "fn:contains",               fn_contains,               2, 3, false ),
-    ( "fn:starts-with",            fn_starts_with,            2, 3, false ),
-    ( "fn:ends-with",              fn_ends_with,              2, 3, false ),
-    ( "fn:substring-before",       fn_substring_before,       2, 3, false ),
-    ( "fn:substring-after",        fn_substring_after,        2, 3, false ),
-// 7.1
-    ( "fn:true",                   fn_true,                   0, 0, false ),
-    ( "fn:false",                  fn_false,                  0, 0, false ),
-// 7.3
-    ( "fn:boolean",                fn_boolean,                1, 1, false ),
-    ( "fn:not",                    fn_not,                    1, 1, false ),
-// 13
-    ( "fn:name",                   fn_name,                   1, 1, true ),
-    ( "fn:local-name",             fn_local_name,             1, 1, true ),
-    ( "fn:namespace-uri",          fn_namespace_uri,          1, 1, true ),
-    ( "fn:lang",                   fn_lang,                   1, 2, true ),
-    ( "fn:root",                   fn_root,                   1, 1, true ),
-// 14.1
-    ( "fn:empty",                  fn_empty,                  1, 1, false ),
-    ( "fn:exists",                 fn_exists,                 1, 1, false ),
-    ( "fn:insert-before",          fn_insert_before,          3, 3, false ),
-    ( "fn:remove",                 fn_remove,                 2, 2, false ),
-    ( "fn:reverse",                fn_reverse,                1, 1, false ),
-    ( "fn:subsequence",            fn_subsequence,            2, 3, false ),
-// 14.2
-    ( "fn:index-of",               fn_index_of,               2, 3, false ),
-// 14.3
-    ( "fn:zero-or-one",            fn_zero_or_one,            1, 1, false ),
-    ( "fn:one-or-more",            fn_one_or_more,            1, 1, false ),
-    ( "fn:exactly-one",            fn_exactly_one,            1, 1, false ),
-// 14.4
-    ( "fn:count",                  fn_count,                  1, 1, false ),
-    ( "fn:avg",                    fn_avg,                    1, 1, false ),
-    ( "fn:max",                    fn_max,                    1, 2, false ),
-    ( "fn:min",                    fn_min,                    1, 2, false ),
-    ( "fn:sum",                    fn_sum,                    1, 2, false ),
-    // funcname, func, min_args, max_args, default_is_context_node_set
-    // ( "fn:id",                    fn_id,                     1, 2, true ),
 
+const FUNC_TBL: [(
+        usize,                  // 引数の個数
+        &str,                   // 函数名
+        fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>);
+                                // 函数の実体: (引数)
+        51] = [
+// 2
+    ( 1, "fn:string",                 fn_string ),
+    ( 1, "fn:data",                   fn_data ),
+// 4.4
+    ( 1, "fn:abs",                    fn_abs ),
+    ( 1, "fn:ceiling",                fn_ceiling ),
+    ( 1, "fn:floor",                  fn_floor ),
+    ( 1, "fn:round",                  fn_round ),
+// 4.5
+    ( 1, "fn:number",                 fn_number ),
+// 5.2.1
+    ( 1, "fn:codepoints-to-string",   fn_codepoints_to_string ),
+    ( 1, "fn:string-to-codepoints",   fn_string_to_codepoints ),
+// 5.3
+    ( 2, "fn:compare",                fn_compare ),
+// 5.4
+    ( M, "fn:concat",                 fn_concat ),
+    ( 1, "fn:string-join",            fn_string_join ),
+    ( 2, "fn:string-join",            fn_string_join ),
+    ( 2, "fn:substring",              fn_substring ),
+    ( 3, "fn:substring",              fn_substring ),
+    ( 1, "fn:string-length",          fn_string_length ),
+    ( 1, "fn:normalize-space",        fn_normalize_space ),
+    ( 1, "fn:upper-case",             fn_upper_case ),
+    ( 1, "fn:lower-case",             fn_lower_case ),
+    ( 3, "fn:translate",              fn_translate ),
+// 5.5
+    ( 2, "fn:contains",               fn_contains ),
+    ( 2, "fn:starts-with",            fn_starts_with ),
+    ( 2, "fn:ends-with",              fn_ends_with ),
+    ( 2, "fn:substring-before",       fn_substring_before ),
+    ( 2, "fn:substring-after",        fn_substring_after ),
+// 7.1
+    ( 0, "fn:true",                   fn_true ),
+    ( 0, "fn:false",                  fn_false ),
+// 7.3
+    ( 1, "fn:boolean",                fn_boolean ),
+    ( 1, "fn:not",                    fn_not ),
+// 13
+    ( 1, "fn:name",                   fn_name ),
+    ( 1, "fn:local-name",             fn_local_name ),
+    ( 1, "fn:namespace-uri",          fn_namespace_uri ),
+    ( 2, "fn:lang",                   fn_lang ),
+    ( 1, "fn:root",                   fn_root ),
+// 14.1
+    ( 1, "fn:empty",                  fn_empty ),
+    ( 1, "fn:exists",                 fn_exists ),
+    ( 3, "fn:insert-before",          fn_insert_before ),
+    ( 2, "fn:remove",                 fn_remove ),
+    ( 1, "fn:reverse",                fn_reverse ),
+    ( 2, "fn:subsequence",            fn_subsequence ),
+    ( 3, "fn:subsequence",            fn_subsequence ),
+// 14.2
+    ( 2, "fn:index-of",               fn_index_of ),
+// 14.3
+    ( 1, "fn:zero-or-one",            fn_zero_or_one ),
+    ( 1, "fn:one-or-more",            fn_one_or_more ),
+    ( 1, "fn:exactly-one",            fn_exactly_one ),
+// 14.4
+    ( 1, "fn:count",                  fn_count ),
+    ( 1, "fn:avg",                    fn_avg ),
+    ( 1, "fn:max",                    fn_max ),
+    ( 1, "fn:min",                    fn_min ),
+    ( 1, "fn:sum",                    fn_sum ),
+    ( 2, "fn:sum",                    fn_sum ),
 ];
 
 // ---------------------------------------------------------------------
 //
 pub fn check_function_spec(func_name: &str, num_args: usize) -> bool {
-    let mut found = false;
-    let mut fn_min_args = 0;
-    let mut fn_max_args = 0;
-    let mut fn_default_is_context_node_set = false;
 
-    // 環境情報を参照する函数。
-    for (name, _func, min_args, max_args) in FUNC_WITH_ENV_TBL.iter() {
-        if &func_name == name {
-            found = true;
-            fn_min_args = *min_args;
-            fn_max_args = *max_args;
+    for (t_num_args, t_func_name, _func) in FUNC_CONTEXT_TBL.iter() {
+        if *t_num_args == num_args && *t_func_name == func_name {
+            return true;
         }
     }
 
-    // 引数を取る函数。
-    for (name, _func, min_args, max_args, default_is_context_node_set) in FUNC_TBL.iter() {
-        if &func_name == name {
-            found = true;
-            fn_min_args = *min_args;
-            fn_max_args = *max_args;
-            fn_default_is_context_node_set = *default_is_context_node_set;
+    for (t_num_args, t_func_name, _func) in FUNC_TBL.iter() {
+        if *t_num_args == num_args && *t_func_name == func_name {
+            return true;
+        }
+        if *t_num_args == M && *t_func_name == func_name {
+            return true;
         }
     }
 
-    if ! found {
-        return false;
-    }
-
-    if fn_default_is_context_node_set {
-        if num_args + 1 < fn_min_args {
-            return false;
-        }
-    } else {
-        if num_args < fn_min_args {
-            return false;
-        }
-    }
-    if fn_max_args < num_args {
-        return false;
-    }
-
-    return true;
+    return false;
 }
 
 // ---------------------------------------------------------------------
-// args: XNodeFunctionCallノードの右にたどった各XNodeArgumentTopノードの、
+// args: FunctionCallノードの右にたどった各ArgumentTopノードの、
 //       評価結果の配列
+// context_xseq: 文脈シーケンス
+// eval_env: 評価環境 (position / last / 変数)
 //
 pub fn evaluate_function(func_name: &str, args: &Vec<XSequence>,
-                xseq: &XSequence,
+                context_xseq: &XSequence,
                 eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
-    let mut found = false;
-    let mut fn_env: Option<&fn(&Vec<&XSequence>, &mut EvalEnv) -> Result<XSequence, Box<Error>>> = None;
-    let mut fn_arg: Option<&fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>> = None;
-    let mut fn_min_args = 0;
-    let mut fn_max_args = 0;
-    let mut fn_default_is_context_node_set = false;
+    let num_args = args.len();
+    let mut ref_args: Vec<&XSequence> = vec!{};
+    for xseq in args.iter() {
+        ref_args.push(xseq);
+    }
 
-    // 環境情報を参照する函数。
-    for (name, func, min_args, max_args) in FUNC_WITH_ENV_TBL.iter() {
-        if &func_name == name {
-            found = true;
-            fn_env = Some(func);
-            fn_min_args = *min_args;
-            fn_max_args = *max_args;
+    for (t_num_args, t_func_name, t_func) in FUNC_CONTEXT_TBL.iter() {
+        if *t_num_args == num_args && *t_func_name == func_name {
+            return t_func(&ref_args, context_xseq, eval_env);
         }
     }
 
-    // 引数を取る函数。
-    for (name, func, min_args, max_args, default_is_context_node_set) in FUNC_TBL.iter() {
-        if &func_name == name {
-            found = true;
-            fn_arg = Some(func);
-            fn_min_args = *min_args;
-            fn_max_args = *max_args;
-            fn_default_is_context_node_set = *default_is_context_node_set;
+    for (t_num_args, t_func_name, t_func) in FUNC_TBL.iter() {
+        if *t_num_args == num_args && *t_func_name == func_name {
+            return t_func(&ref_args);
+        }
+        if *t_num_args == M && *t_func_name == func_name {
+            return t_func(&ref_args);
         }
     }
 
-    if ! found {
-        return Err(cant_occur!("{}: この函数は未実装 (構文解析時の検査漏れ)。",
-            func_name));
-    }
-
-    // 最後の引数が欠けていて、その既定値が文脈ノードである場合、これを補う。
-    let arg_xseq = xseq.clone();
-    let mut fn_args: Vec<&XSequence> = vec!{};
-    for arg in args.iter() {
-        fn_args.push(arg);
-    }
-
-    if fn_default_is_context_node_set && args.len() == fn_max_args - 1 {
-        fn_args.push(&arg_xseq);
-    }
-
-    if fn_args.len() < fn_min_args {
-        return Err(cant_occur!("{}: 引数が不足 (min: {}) (構文解析時の検査漏れ)。",
-            func_name, fn_min_args));
-    }
-    if fn_max_args < fn_args.len() {
-        return Err(cant_occur!("{}: 引数が過剰 (max: {}) (構文解析時の検査漏れ)。",
-            func_name, fn_max_args));
-    }
-
-    // 実行する。
-    if let Some(func) = fn_env {
-        return func(&fn_args, eval_env);
-    } else if let Some(func) = fn_arg {
-        return func(&fn_args);
-    } else {
-        return Err(cant_occur!("{}: 該当する函数がない (構文解析時の検査漏れ)。",
-            func_name));
-    }
+    return Err(cant_occur!("{}: 該当する函数がない (構文解析時の検査漏れ)。",
+                    func_name));
 }
 
 // ---------------------------------------------------------------------
@@ -255,6 +226,11 @@ pub fn evaluate_function(func_name: &str, args: &Vec<XSequence>,
 //      ノード => 文字列値
 //      原子値 => $arg cast as xs:string
 //
+fn fn_string_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_string(&vec!{context_xseq});
+}
+
 fn fn_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_string(&""));
@@ -267,8 +243,14 @@ fn fn_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 
 // ---------------------------------------------------------------------
 // 2.4 fn:data
+// fn:data() as xs:anyAtomicType*
 // fn:data($arg as item()*) as xs:anyAtomicType*
 //
+fn fn_data_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_data(&vec!{context_xseq});
+}
+
 fn fn_data(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     return Ok(args[0].atomize());
 }
@@ -395,6 +377,11 @@ fn fn_numeric_unary<FINT, FDEC, FDBL>(args: &Vec<&XSequence>,
 // fn:number() as xs:double
 // fn:number($arg as xs:anyAtomicType?) as xs:double
 //
+fn fn_number_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_number(&vec!{context_xseq});
+}
+
 fn fn_number(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_double(f64::NAN));
@@ -519,6 +506,7 @@ pub fn fn_compare(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 //           ... ) as xs:string
 //
 //                  引数がすべて空シーケンスの場合、空文字列を返す。
+//                  仕様上は引数が2個以上となっているが、それ未満も許容する。
 //
 pub fn fn_concat(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     let mut val = String::new();
@@ -596,6 +584,11 @@ fn fn_substring(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:string-length() as xs:integer
 // fn:string-length($arg as xs:string?) as xs:integer
 //
+fn fn_string_length_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_string_length(&vec!{context_xseq});
+}
+
 fn fn_string_length(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_integer(0));
@@ -612,6 +605,11 @@ fn fn_string_length(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:normalize-space() as xs:integer
 // fn:normalize-space($arg as xs:string?) as xs:integer
 //
+fn fn_normalize_space_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_normalize_space(&vec!{context_xseq});
+}
+
 fn fn_normalize_space(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_string(&""));
@@ -885,6 +883,11 @@ pub fn fn_not(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:name() as xs:string
 // fn:name($arg as node()?) as xs:string
 //
+fn fn_name_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_name(&vec!{context_xseq});
+}
+
 fn fn_name(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_string(&""));
@@ -901,6 +904,11 @@ fn fn_name(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:local-name() as xs:string
 // fn:local-name($arg as node()?) as xs:string
 //
+fn fn_local_name_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_local_name(&vec!{context_xseq});
+}
+
 fn fn_local_name(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_string(&""));
@@ -917,6 +925,11 @@ fn fn_local_name(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:namespace-uri() as xs:anyURI
 // fn:namespace-uri($arg as node()?) as xs:anyURI
 //
+fn fn_namespace_uri_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_namespace_uri(&vec!{context_xseq});
+}
+
 fn fn_namespace_uri(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_string(&""));
@@ -933,6 +946,11 @@ fn fn_namespace_uri(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:lang($testlang as xs:string?) as xs:boolean
 // fn:lang($testlang as xs:string?, $node as node()) as xs:boolean
 //
+fn fn_lang_1(args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_lang(&vec!{args[0], context_xseq});
+}
+
 fn fn_lang(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_singleton_string(&""));
@@ -959,6 +977,11 @@ fn fn_lang(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // fn:root() as node()
 // fn:root($arg as node()?) as node()?
 //
+fn fn_root_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_root(&vec!{context_xseq});
+}
+
 fn fn_root(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_xsequence());
@@ -1264,14 +1287,16 @@ fn fn_sum(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // ---------------------------------------------------------------------
 // 15.1 fn:position
 //
-fn fn_position(_args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+fn fn_position(_args: &Vec<&XSequence>, _xseq: &XSequence,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
     return Ok(new_singleton_integer(usize_to_i64(eval_env.get_position())));
 }
 
 // ---------------------------------------------------------------------
 // 15.2 fn:last
 //
-fn fn_last(_args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+fn fn_last(_args: &Vec<&XSequence>, _xseq: &XSequence,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
     return Ok(new_singleton_integer(usize_to_i64(eval_env.get_last())));
 }
 
@@ -1283,14 +1308,15 @@ fn fn_last(_args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence,
 // fn:for-each($seq as item()*,
 //             $action as function(item()) as item()*) as item()*
 //
-fn fn_for_each(args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+fn fn_for_each(args: &Vec<&XSequence>, context_xseq: &XSequence,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     let action_xnode = args[1].get_singleton_xnodeptr()?;
     let mut result = new_xsequence();
     for xitem in args[0].iter() {
         let argument_xseq = new_singleton(xitem);
         let result_xseq = call_function(
-                    &action_xnode, vec!{argument_xseq}, eval_env)?;
+                &action_xnode, vec!{argument_xseq}, context_xseq, eval_env)?;
         result.append(&result_xseq);
     }
     return Ok(result);
@@ -1301,22 +1327,21 @@ fn fn_for_each(args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequen
 // fn:filter($seq as item()*,
 //           $f as function(item()) as xs:boolean) as item()*
 //
-fn fn_filter(args: &Vec<&XSequence>, eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+fn fn_filter(args: &Vec<&XSequence>, context_xseq: &XSequence,
+                eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
 
     let func_xnode = args[1].get_singleton_xnodeptr()?;
     let mut result = new_xsequence();
     for xitem in args[0].iter() {
         let argument_xseq = new_singleton(xitem);
         let result_xseq = call_function(
-                    &func_xnode, vec!{argument_xseq}, eval_env)?;
+                &func_xnode, vec!{argument_xseq}, context_xseq, eval_env)?;
         if result_xseq.effective_boolean_value()? == true {
             result.push(&xitem);
         }
     }
     return Ok(result);
 }
-
-
 
 // ---------------------------------------------------------------------
 // 17 Maps and Arrays
@@ -1424,6 +1449,7 @@ mod test {
         "#);
         subtest_eval_xpath("fn_data", &xml, &[
             ( r#"data((/a, 37))"#, r#"("Data", 37)"# ),
+            ( r#"data()"#, r#"("Data")"# ),
         ]);
     }
 
@@ -1556,7 +1582,8 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_concat", &xml, &[
-            ( r#"concat("あい")"#, "Syntax Error in XPath" ),   // 引数不足
+//            ( r#"concat("あい")"#, "Syntax Error in XPath" ),   // 引数不足
+            ( r#"concat("あい")"#, r#"("あい")"# ),   // 引数不足だが許容
             ( r#"concat("あい", "うえ")"#, r#"("あいうえ")"# ),
             ( r#"concat(123, 456, 789)"#, r#"("123456789")"# ),
             ( r#"concat((), "A", ())"#, r#"("A")"# ),
