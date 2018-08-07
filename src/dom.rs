@@ -26,6 +26,7 @@
 
 use std::cell::RefCell;
 use std::error::Error;
+use std::fmt;
 use std::rc::{Rc, Weak};
 use std::usize;
 use sax::{SaxDecoder, XmlToken};
@@ -34,7 +35,7 @@ use xmlerror::*;
 // =====================================================================
 /// A node in the XML document tree.
 ///
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NodePtr {
     rc_node: RcNode,
 }
@@ -43,6 +44,45 @@ type RcNode = Rc<Node>;
 
 fn wrap_rc_clone(rc_node: &RcNode) -> NodePtr {
     return NodePtr{ rc_node: Rc::clone(rc_node) };
+}
+
+// ---------------------------------------------------------------------
+//
+impl fmt::Debug for NodePtr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.node_type() {
+            NodeType::DocumentRoot => {
+                return write!(f, "(DocumentRoot)");
+            },
+            NodeType::Element => {
+                let mut str = String::new();
+                str += &"<";
+                str += &self.name();
+                for at in self.attributes().iter() {
+                    str += &format!(r#" {}="{}""#, at.name(), at.value());
+                }
+                str += &">";
+                return write!(f, "{}", str);
+            },
+            NodeType::Text => {
+                return write!(f, "{}", self.value());
+            },
+            NodeType::Attribute => {
+                return write!(f, r#"{}="{}""#, self.name(), self.value());
+            },
+            _ => {
+                return write!(f, "");
+            },
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+//
+impl fmt::Display for NodePtr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(f, "{:?}", self);
+    }
 }
 
 // ---------------------------------------------------------------------

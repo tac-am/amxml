@@ -5,6 +5,7 @@
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
 //
 
+//use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::f64;
@@ -132,17 +133,46 @@ pub struct XSeqMap {
     v: Vec<(XItem, XSequence)>,
 }
 
+impl fmt::Display for XSeqMap {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = String::from("{");
+        for (i, v) in self.v.iter().enumerate() {
+            if i != 0 {
+                s += &", ";
+            }
+            s += &format!("{} => {}", v.0, v.1);
+        }
+        s += &"}";
+        return write!(f, "{}", s);
+    }
+}
+
 impl XSeqMap {
+    pub fn map_size(&self) -> usize {
+        return self.v.len();
+    }
+
+    pub fn map_keys(&self) -> Vec<XItem> {
+        let mut result: Vec<XItem> = vec!{};
+        for entry in self.v.iter() {
+            result.push(entry.0.clone());
+        }
+        return result;
+    }
+
+    pub fn map_contains(&self, key: &XItem) -> bool {
+        for entry in self.v.iter() {
+            if entry.0.op_same_key(key) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     pub fn map_get(&self, key: &XItem) -> Option<XSequence> {
         for entry in self.v.iter() {
-            let c = xitem_compare(&entry.0, &key);
-            match c {
-                Ok(c) => {
-                    if c == 0 {
-                        return Some(entry.1.clone());
-                    }
-                },
-                _ => {},
+            if entry.0.op_same_key(key) {
+                return Some(entry.1.clone());
             }
         }
         return None;
@@ -156,7 +186,25 @@ pub struct XSeqArray {
     v: Vec<XSequence>,
 }
 
+impl fmt::Display for XSeqArray {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = String::from("[");
+        for (i, v) in self.v.iter().enumerate() {
+            if i != 0 {
+                s += &", ";
+            }
+            s += &format!("{}", v);
+        }
+        s += &"]";
+        return write!(f, "{}", s);
+    }
+}
+
 impl XSeqArray {
+    pub fn array_size(&self) -> usize {
+        return self.v.len();
+    }
+
     pub fn array_get(&self, index: &XItem) -> Option<XSequence> {
         let i = index.get_as_raw_integer();
         match i {
@@ -168,6 +216,23 @@ impl XSeqArray {
             _ => {},
         }
         return None;
+    }
+
+    pub fn array_flatten(&self) -> XSequence {
+        let mut result = new_xsequence();
+        for xseq in self.v.iter() {
+            for xitem in xseq.iter() {
+                match xitem {
+                    XItem::XIArray{value} => {
+                        result.append(&value.array_flatten());
+                    },
+                    _ => {
+                        result.push(xitem);
+                    }
+                }
+            }
+        }
+        return result;
     }
 }
 
@@ -224,33 +289,6 @@ pub fn new_xitem_boolean(value: bool) -> XItem {
 // =====================================================================
 //
 impl NodePtr {
-    // -----------------------------------------------------------------
-    //
-    fn node_dump(&self) -> String {
-        let mut dump_str = String::new();
-        match self.node_type() {
-            NodeType::DocumentRoot => {
-                dump_str += &"(DocumentRoot)";
-            },
-            NodeType::Element => {
-                dump_str += &"<";
-                dump_str += &self.name();
-                for at in self.attributes().iter() {
-                    dump_str += &format!(r#" {}="{}""#,
-                        at.name(), at.value());
-                }
-                dump_str += &">";
-            },
-            NodeType::Text => {
-                dump_str += &self.value();
-            },
-            NodeType::Attribute => {
-                dump_str += &format!(r#"{}="{}""#, self.name(), self.value());
-            },
-            _ => {},
-        }
-        return dump_str;
-    }
 
     // =================================================================
     // Returns the string value of DOM node.
@@ -330,6 +368,21 @@ impl NodePtr {
         }
     }
 
+    // =================================================================
+    // dm:node-kind($n as node()) as xs:string
+    //
+//    fn dm_node_kind(&self) -> String {
+//        match self.node_type() {
+//            NodeType::Attribute => return String::from("attribute"),
+//            NodeType::Comment => return String::from("comment"),
+//            NodeType::DocumentRoot => return String::from("document"),
+//            NodeType::Element => return String::from("element"),
+//            NodeType::Instruction => return String::from("processing-instruction"),
+//            // "namespace"
+//            NodeType::Text => return String::from("text"),
+//            _ => return String::new(),
+//        }
+//    }
 }
 
 // =====================================================================
@@ -339,7 +392,7 @@ impl fmt::Display for XItem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             XItem::XINode{value} => {
-                return write!(f, "{}", value.node_dump());
+                return write!(f, "{}", value);
             },
             XItem::XIString{value} => {
                 return write!(f, r#""{}""#, value);
@@ -380,26 +433,10 @@ impl fmt::Display for XItem {
                 return write!(f, "{}", value);
             },
             XItem::XIMap{value} => {
-                let mut s = String::from("{");
-                for (i, v) in value.v.iter().enumerate() {
-                    if i != 0 {
-                        s += &", ";
-                    }
-                    s += &format!("{} => {}", v.0, v.1);
-                }
-                s += &"}";
-                return write!(f, "{}", s);
+                return write!(f, "{}", value);
             },
             XItem::XIArray{value} => {
-                let mut s = String::from("[");
-                for (i, v) in value.v.iter().enumerate() {
-                    if i != 0 {
-                        s += &", ";
-                    }
-                    s += &format!("{}", v);
-                }
-                s += &"]";
-                return write!(f, "{}", s);
+                return write!(f, "{}", value);
             },
         }
     }
@@ -408,6 +445,52 @@ impl fmt::Display for XItem {
 // =====================================================================
 //
 impl XItem {
+
+    // -----------------------------------------------------------------
+    //
+    pub fn xs_type(&self) -> String {
+        match self {
+            XItem::XItemXNodePtr{value: _} => return String::from("function(*)"),
+            XItem::XIMap{value: _} => return String::from("map(*)"),
+            XItem::XIArray{value: _} => return String::from("array(*)"),
+            XItem::XINode{value: _} => return String::from("node"),
+
+
+            XItem::XIString{value: _} => return String::from("xs:string"),
+            XItem::XIInteger{value: _} => return String::from("xs:integer"),
+            XItem::XIDecimal{value: _} => return String::from("xs:decimal"),
+            XItem::XIDouble{value: _} => return String::from("xs:double"),
+            XItem::XIBoolean{value: _} => return String::from("xs:boolean"),
+        }
+    }
+
+    // -----------------------------------------------------------------
+    //
+//    pub fn instance_of(&self, xs_type: &str) -> bool {
+//        let derived_from: HashMap<&str, &str> = [
+//            ( "xs:integer",       "xs:decimal" ),
+//            ( "xs:decimal",       "xs:numeric" ),
+//            ( "xs:double",        "xs:numeric" ),
+//                    // numericは、実際には union {decimal, float, double}
+//            ( "xs:numeric",       "xs:anyAtomicType" ),
+//            ( "xs:string",        "xs:anyAtomicType" ),
+//            ( "xs:boolean",       "xs:anyAtomicType" ),
+//            ( "xs:anyAtomicType", "xs:anySimpleType" ),
+//            ( "xs:anySimpleType", "xs:anyType" ),
+//        ].iter().cloned().collect();
+//
+//        let mut self_type = self.xs_type();
+//        loop {
+//            if self_type.as_str() == xs_type {
+//                return true;
+//            }
+//            match derived_from.get(self_type.as_str()) {
+//                Some(s) => self_type = String::from(*s),
+//                None => return false,
+//            }
+//        }
+//    }
+
     // -----------------------------------------------------------------
     //
     pub fn as_nodeptr(&self) -> Option<NodePtr> {
@@ -438,6 +521,7 @@ impl XItem {
     }
 
     // -----------------------------------------------------------------
+    // An item is either an atomic value, a node, or a function.
     //
     pub fn is_item(&self) -> bool {
         match self {
@@ -458,6 +542,37 @@ impl XItem {
     }
 
     // -----------------------------------------------------------------
+    // 若干厳密さに欠ける (例えば、"3" と3が同じになってしまう) が、
+    // 当面、raw_stringとして比較する。
+    //
+    // (1) string (、anyURI、untypedAtomic) どうしの場合:
+    //     fn:codepoint-equal($k1, $k2) で比較する。
+    // (2) decimal、double (、float) どうしの場合:
+    //                  ** おそらくintegerも。
+    //     (2-a) NaN、INF、-INF どうしならばtrue
+    //     (2-b) 精度を損なわないようdecimalに変換して比較
+    // (3) date、time、dateTime、... どうしの場合:
+    //     fn:deep-equal($k1, $k2) で比較する。
+    // (4) boolean (、hexBinary、...) どうしの場合:
+    //     fn:deep-equal($k1, $k2) で比較する。
+    //
+    pub fn op_same_key(&self, other: &XItem) -> bool {
+        let k1 = self.get_as_raw_string();
+        if let Err(_) = k1 {
+            return false;
+        }
+        let k1 = k1.unwrap();
+
+        let k2 = other.get_as_raw_string();
+        if let Err(_) = k2 {
+            return false;
+        }
+        let k2 = k2.unwrap();
+
+        return k1 == k2;
+    }
+
+    // -----------------------------------------------------------------
     // キャスト可能か否か。
     //
     pub fn castable_as(&self, type_name: &str) -> bool {
@@ -474,27 +589,27 @@ impl XItem {
     //
     pub fn cast_as(&self, type_name: &str) -> Result<XItem, Box<Error>> {
         match type_name {
-            "string" => {
+            "string" | "xs:string" => {
                 if let Ok(s) = self.get_as_raw_string() {
                     return Ok(new_xitem_string(&s));
                 }
             },
-            "double" => {
+            "double" | "xs:double" => {
                 if let Ok(d) = self.get_as_raw_double() {
                     return Ok(new_xitem_double(d));
                 }
             },
-            "decimal" => {
+            "decimal" | "xs:decimal" => {
                 if let Ok(d) = self.get_as_raw_decimal() {
                     return Ok(new_xitem_decimal(d));
                 }
             },
-            "integer" => {
+            "integer" | "xs:integer" => {
                 if let Ok(i) = self.get_as_raw_integer() {
                     return Ok(new_xitem_integer(i));
                 }
             },
-            "boolean" => {
+            "boolean" | "xs:boolean" => {
                 if let Ok(b) = self.get_as_raw_boolean() {
                     return Ok(new_xitem_boolean(b));
                 }
@@ -503,6 +618,45 @@ impl XItem {
         }
         return Err(type_error!("Item {}: can't cast to {}",
                                 self.to_string(), type_name));
+    }
+
+    // -----------------------------------------------------------------
+    //
+    pub fn get_as_raw_xnodeptr(&self) -> Result<XNodePtr, Box<Error>> {
+        match self {
+            XItem::XItemXNodePtr{value} => {
+                return Ok(value.clone());
+            },
+            _ => {
+                return Err(type_error!("Item is not XItemXNodePtr"));
+            },
+        }
+    }
+
+    // -----------------------------------------------------------------
+    //
+    pub fn get_as_raw_map(&self) -> Result<XSeqMap, Box<Error>> {
+        match self {
+            XItem::XIMap{value} => {
+                return Ok(value.clone());
+            },
+            _ => {
+                return Err(type_error!("Item is not XSeqMap"));
+            },
+        }
+    }
+
+    // -----------------------------------------------------------------
+    //
+    pub fn get_as_raw_array(&self) -> Result<XSeqArray, Box<Error>> {
+        match self {
+            XItem::XIArray{value} => {
+                return Ok(value.clone());
+            },
+            _ => {
+                return Err(type_error!("Item is not XSeqArray"));
+            },
+        }
     }
 
     // -----------------------------------------------------------------

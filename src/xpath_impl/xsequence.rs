@@ -81,14 +81,18 @@ pub fn new_singleton_boolean(value: bool) -> XSequence {
 impl fmt::Display for XSequence {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut s = String::new();
-        s += &"(";
+        if ! self.is_singleton() {
+            s += &"(";
+        }
         for (i, v) in self.value.iter().enumerate() {
             if i != 0 {
                 s += &", ";
             }
             s += &v.to_string();        // XSequenceを構成する各XItem
         }
-        s += &")";
+        if ! self.is_singleton() {
+            s += &")";
+        }
         return write!(f, "{}", s);
     }
 }
@@ -549,36 +553,36 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("compare_general", &xml, &[
-            ( "3 = 3", "(true)" ),
-            ( "3 = 5", "(false)" ),
-            ( "true() = true()", "(true)" ),
-            ( "true() = false()", "(false)" ),
-            ( "'ABC' = 'DEF'", "(false)" ),
-            ( "'ABC' = 'ABC'", "(true)" ),
+            ( "3 = 3", "true" ),
+            ( "3 = 5", "false" ),
+            ( "true() = true()", "true" ),
+            ( "true() = false()", "false" ),
+            ( "'ABC' = 'DEF'", "false" ),
+            ( "'ABC' = 'ABC'", "true" ),
 
-            ( "3 < 5", "(true)" ),
-            ( "3 > 5", "(false)" ),
-            ( "3 <= 5", "(true)" ),
-            ( "5 <= 3", "(false)" ),
-            ( "3 >= 5", "(false)" ),
-            ( "5 >= 3", "(true)" ),
+            ( "3 < 5", "true" ),
+            ( "3 > 5", "false" ),
+            ( "3 <= 5", "true" ),
+            ( "5 <= 3", "false" ),
+            ( "3 >= 5", "false" ),
+            ( "5 >= 3", "true" ),
 
-            ( "(3 = 3) = true()", "(true)" ),
-            ( "(3 = 10) = true()", "(false)" ),
-            ( "(3 = 3) < true()", "(false)" ),
-            ( "(3 = 10) < true()", "(true)" ),
-            ( "(3 = 3) < false()", "(false)" ),
-            ( "(3 = 10) < false()", "(false)" ),
+            ( "(3 = 3) = true()", "true" ),
+            ( "(3 = 10) = true()", "false" ),
+            ( "(3 = 3) < true()", "false" ),
+            ( "(3 = 10) < true()", "true" ),
+            ( "(3 = 3) < false()", "false" ),
+            ( "(3 = 10) < false()", "false" ),
 
             // 異なる型どうしの比較
-            ( "'ABC' = true()", "(false)" ),
-            ( "'' = true()", "(false)" ),
-            ( "5 = true()", "(false)" ),
-            ( "0 = true()", "(false)" ),
-            ( "10 = '10'", "(false)" ),
-            ( "10 != '10'", "(false)" ),
-            ( "5 <= '10'", "(false)" ),
-            ( "10 <= '5'", "(false)" ),
+            ( "'ABC' = true()", "false" ),
+            ( "'' = true()", "false" ),
+            ( "5 = true()", "false" ),
+            ( "0 = true()", "false" ),
+            ( "10 = '10'", "false" ),
+            ( "10 != '10'", "false" ),
+            ( "5 <= '10'", "false" ),
+            ( "10 <= '5'", "false" ),
 
             // Division by zero
             ( "3 div 0", "Dynamic Error" ),
@@ -601,8 +605,8 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("compare_infinity", &xml, &[
-            ( "999 < 3e0 div 0e0 ", "(true)" ),
-            ( "-3e0 div 0e0 < -999", "(true)" ),
+            ( "999 < 3e0 div 0e0 ", "true" ),
+            ( "-3e0 div 0e0 < -999", "true" ),
         ]);
     }
 
@@ -616,17 +620,17 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("compare_nan", &xml, &[
-            ( "3.0e1 = 0e0 div 0e0", "(false)" ),
-            ( "0e0 div 0e0 = 0e0 div 0e0", "(false)" ),
+            ( "3.0e1 = 0e0 div 0e0", "false" ),
+            ( "0e0 div 0e0 = 0e0 div 0e0", "false" ),
 
-            ( "'NaN' = 'NaN'", "(true)" ),
-            ( "'NaN' != 'NaN'", "(false)" ),
-            ( "'NaN' <= 'NaN'", "(true)" ),
-            ( "'NaN' < 'NaN'", "(false)" ),
+            ( "'NaN' = 'NaN'", "true" ),
+            ( "'NaN' != 'NaN'", "false" ),
+            ( "'NaN' <= 'NaN'", "true" ),
+            ( "'NaN' < 'NaN'", "false" ),
                 // 文字列のままで比較。
 
-            ( "number('NaN') = number('NaN')", "(false)" ),
-            ( "number('NaN') != number('NaN')", "(true)" ),
+            ( "number('NaN') = number('NaN')", "false" ),
+            ( "number('NaN') != number('NaN')", "true" ),
                 // 明示的に number() で変換した場合。
         ]);
     }
@@ -641,21 +645,21 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("compare_value", &xml, &[
-            ( "false() eq true()", "(false)" ),
-            ( "false() ne true()", "(true)" ),
-            ( "false() lt true()", "(true)" ),
+            ( "false() eq true()", "false" ),
+            ( "false() ne true()", "true" ),
+            ( "false() lt true()", "true" ),
             ( "(1, 2) eq (2, 3)", "Type Error" ),
 
-            ( "3 lt 5", "(true)" ),
-            ( "3 gt 5", "(false)" ),
-            ( "3 le 5", "(true)" ),
-            ( "5 le 3", "(false)" ),
-            ( "3 ge 5", "(false)" ),
-            ( "5 ge 3", "(true)" ),
+            ( "3 lt 5", "true" ),
+            ( "3 gt 5", "false" ),
+            ( "3 le 5", "true" ),
+            ( "5 le 3", "false" ),
+            ( "3 ge 5", "false" ),
+            ( "5 ge 3", "true" ),
 
-            ( r#"'abc' eq 'abc'"#, "(true)" ),
-            ( r#"'abc' le 'abc'"#, "(true)" ),
-            ( r#"'100' le '99'"#, "(true)" ),
+            ( r#"'abc' eq 'abc'"#, "true" ),
+            ( r#"'abc' le 'abc'"#, "true" ),
+            ( r#"'100' le '99'"#, "true" ),
         ]);
     }
 
@@ -670,11 +674,11 @@ mod test {
         "#);
 
         subtest_eval_xpath("test_eval_xpath", &xml, &[
-            ( "(1, 2) = (1, 3)", "(true)" ),
-            ( "(1, 2) != (1, 3)", "(true)" ),
-            ( "(1, 2) = (3, 4)", "(false)" ),
-            ( "(1, 2) < (2, 4)", "(true)" ),
-            ( "(5, 5) < (2, 4)", "(false)" ),
+            ( "(1, 2) = (1, 3)", "true" ),
+            ( "(1, 2) != (1, 3)", "true" ),
+            ( "(1, 2) = (3, 4)", "false" ),
+            ( "(1, 2) < (2, 4)", "true" ),
+            ( "(5, 5) < (2, 4)", "false" ),
         ]);
     }
 
@@ -693,15 +697,15 @@ mod test {
         "#);
 
         subtest_eval_xpath("compare_nodeset_and_atomic", &xml, &[
-            ( "/a/b = 'red'", "(true)" ),
-            ( "/a/b eq 'red'", "(true)" ),
-            ( "/a/c = 'green'", "(true)" ),
+            ( "/a/b = 'red'", "true" ),
+            ( "/a/b eq 'red'", "true" ),
+            ( "/a/c = 'green'", "true" ),
             ( "/a/c eq 'green'", "Type Error" ),
-            ( "/a/c[1] eq 'green'", "(true)" ),
-            ( "/a/d = '94' ", "(true)" ),
-            ( "/a/d cast as integer = 94 ", "(true)" ),
-            ( "/a/d cast as decimal = 94 ", "(true)" ),
-            ( "/a/d cast as decimal = 94.0 ", "(true)" ),
+            ( "/a/c[1] eq 'green'", "true" ),
+            ( "/a/d = '94' ", "true" ),
+            ( "/a/d cast as integer = 94 ", "true" ),
+            ( "/a/d cast as decimal = 94 ", "true" ),
+            ( "/a/d cast as decimal = 94.0 ", "true" ),
         ]);
 
     }
@@ -730,10 +734,10 @@ mod test {
             // [ノード集合を含む場合]
             // 両方ともノード集合: 双方からそれぞれ選んだノードで、
             // 文字列値の比較結果が真になるものがあれば、真とする。
-            ( "/a/lhs/p = /a/rhs/p", "(true)" ),
-            ( "/a/lhs/p = /a/empty/p", "(false)" ),
-            ( "/a/lhs/p < /a/rhs/p", "(true)" ),
-            ( "/a/lhs/p > /a/rhs/p", "(false)" ),
+            ( "/a/lhs/p = /a/rhs/p", "true" ),
+            ( "/a/lhs/p = /a/empty/p", "false" ),
+            ( "/a/lhs/p < /a/rhs/p", "true" ),
+            ( "/a/lhs/p > /a/rhs/p", "false" ),
         ]);
     }
 

@@ -133,6 +133,35 @@ pub fn op_boolean_greater_than(args: &Vec<&XSequence>) -> Result<XSequence, Box<
 }
 
 // ---------------------------------------------------------------------
+// 17.1 Functions that Operate on Maps
+//
+// ---------------------------------------------------------------------
+// 17.1.1 op:same-key
+// op:same-key($k1 as xs:anyAtomicType, $k2 as xs:anyAtomicType) as xs:boolean
+//
+// 若干厳密さに欠ける (例えば、"3" と3が同じになってしまう) が、
+// 当面、raw_stringとして比較する。
+//
+// (1) string (、anyURI、untypedAtomic) どうしの場合:
+//     fn:codepoint-equal($k1, $k2) で比較する。
+// (2) decimal、double (、float) どうしの場合:
+//                  ** おそらくintegerも。
+//     (2-a) NaN、INF、-INF どうしならばtrue
+//     (2-b) 精度を損なわないようdecimalに変換して比較
+// (3) date、time、dateTime、... どうしの場合:
+//     fn:deep-equal($k1, $k2) で比較する。
+// (4) boolean (、hexBinary、...) どうしの場合:
+//     fn:deep-equal($k1, $k2) で比較する。
+//
+//pub fn op_same_key(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+//    let k1 = args[0].get_singleton_item()?
+//    let k2 = args[1].get_singleton_item()?
+//
+//    let result = k1.op_same_key(&k2);
+//    return Ok(new_singleton_boolean(result));
+//}
+
+// ---------------------------------------------------------------------
 // Functions and Operators on Nodes
 //   (XPath 3.1 では演算子の項に載っていない)
 //          is_same_node
@@ -251,15 +280,15 @@ mod test {
         "#);
 
         subtest_eval_xpath("numeric_operators", &xml, &[
-            ( "10 - 3 - 4", "(3)" ),
-            ( "10.5 - 3", "(7.5)" ),
-            ( "10.5 - 3 - 1.5", "(6.0)" ),
-            ( "1.05e1 - 3 - 1.5", "(6e0)" ),
-            ( "10 - (3 - 4)", "(11)" ),
-            ( "16 - 6 - 3 - 4", "(3)" ),
-            ( "18 - 2 - 6 - 3 - 4", "(3)" ),
-            ( "1 + 2 * 4 + 2", "(11)" ),
-            ( "1 + 2 * 4 - 2", "(7)" ),
+            ( "10 - 3 - 4", "3" ),
+            ( "10.5 - 3", "7.5" ),
+            ( "10.5 - 3 - 1.5", "6.0" ),
+            ( "1.05e1 - 3 - 1.5", "6e0" ),
+            ( "10 - (3 - 4)", "11" ),
+            ( "16 - 6 - 3 - 4", "3" ),
+            ( "18 - 2 - 6 - 3 - 4", "3" ),
+            ( "1 + 2 * 4 + 2", "11" ),
+            ( "1 + 2 * 4 - 2", "7" ),
         ]);
     }
 
@@ -274,21 +303,21 @@ mod test {
         "#);
 
         subtest_eval_xpath("numeric_divide", &xml, &[
-            ( "6 div 2", "(3.0)" ),         // Integer div Integer => Decimal
-            ( "5 div 2", "(2.5)" ),         // Integer div Integer => Decimal
-            ( "5.0 div 2", "(2.5)" ),
-            ( "9.6 div 2.4", "(4.0)" ),
+            ( "6 div 2", "3.0" ),         // Integer div Integer => Decimal
+            ( "5 div 2", "2.5" ),         // Integer div Integer => Decimal
+            ( "5.0 div 2", "2.5" ),
+            ( "9.6 div 2.4", "4.0" ),
 
             ( "7 div 0", "Dynamic Error" ),
             ( "-7 div 0", "Dynamic Error" ),
             ( "7.0 div 0", "Dynamic Error" ),
             ( "-7.0 div 0", "Dynamic Error" ),
-            ( "7 div 0.0e0", "(+Infinity)" ),
-            ( "-7 div 0.0e0", "(-Infinity)" ),
-            ( "7.0e0 div 0.0e0", "(+Infinity)" ),
-            ( "-7.0e0 div 0.0e0", "(-Infinity)" ),
+            ( "7 div 0.0e0", "+Infinity" ),
+            ( "-7 div 0.0e0", "-Infinity" ),
+            ( "7.0e0 div 0.0e0", "+Infinity" ),
+            ( "-7.0e0 div 0.0e0", "-Infinity" ),
 
-            ( "0.0e0 div 0.0e0", "(NaN)" ),
+            ( "0.0e0 div 0.0e0", "NaN" ),
             ( "0 div 0", "Dynamic Error" ),
         ]);
     }
@@ -304,28 +333,28 @@ mod test {
         "#);
 
         subtest_eval_xpath("numeric_integer_divide", &xml, &[
-            ( "10 idiv 3", "(3)" ),
-            ( "3 idiv -2", "(-1)" ),
-            ( "-3 idiv 2", "(-1)" ),
-            ( "-3 idiv -2", "(1)" ),
-            ( "9.0 idiv 3", "(3)" ),
-            ( "-3.5 idiv 3", "(-1)" ),
-            ( "3.0 idiv 4", "(0)" ),
-            ( "3.1e1 idiv 6", "(5)" ),
-            ( "3.1e1 idiv 7", "(4)" ),
+            ( "10 idiv 3", "3" ),
+            ( "3 idiv -2", "-1" ),
+            ( "-3 idiv 2", "-1" ),
+            ( "-3 idiv -2", "1" ),
+            ( "9.0 idiv 3", "3" ),
+            ( "-3.5 idiv 3", "-1" ),
+            ( "3.0 idiv 4", "0" ),
+            ( "3.1e1 idiv 6", "5" ),
+            ( "3.1e1 idiv 7", "4" ),
 
             ( "7 idiv 0", "Dynamic Error" ),
             ( "7.0 idiv 0", "Dynamic Error" ),
 
             // XIDoubleの扱い: JavaやC++の実装とは違っている。
-            ( "0.0e0 div 0.0e0", "(NaN)" ),
+            ( "0.0e0 div 0.0e0", "NaN" ),
             ( "(0.0e0 div 0.0e0) idiv 5", "Dynamic Error" ), // NaN idiv any = Error
             ( "5 idiv (0.0e0 div 0.0e0)", "Dynamic Error" ), // any idiv NaN = Error
-            ( "7.0e0 div 0.0e0", "(+Infinity)" ),
+            ( "7.0e0 div 0.0e0", "+Infinity" ),
             ( "(7.0e0 div 0.0e0) idiv 5", "Dynamic Error" ),    // +∞ idiv N = Error
-            ( "5 idiv (7.0e0 div 0.0e0)", "(0)" ),   // N idiv +∞ = 0
-            ( "5 idiv (-7.0e0 div 0.0e0)", "(0)" ),  // N idiv -∞ = 0
-            ( "0.0e0 idiv 5", "(0)" ),              // 0 idiv N = 0
+            ( "5 idiv (7.0e0 div 0.0e0)", "0" ),   // N idiv +∞ = 0
+            ( "5 idiv (-7.0e0 div 0.0e0)", "0" ),  // N idiv -∞ = 0
+            ( "0.0e0 idiv 5", "0" ),              // 0 idiv N = 0
 
         ]);
     }
@@ -341,31 +370,31 @@ mod test {
         "#);
 
         subtest_eval_xpath("numeric_mod", &xml, &[
-            ( "10 mod 3", "(1)" ),
-            ( "6 mod -2", "(0)" ),
-            ( "5 mod 2", "(1)" ),
-            ( "5 mod -2", "(1)" ),
-            ( "-5 mod 2", "(-1)" ),
-            ( "-5 mod -2", "(-1)" ),
+            ( "10 mod 3", "1" ),
+            ( "6 mod -2", "0" ),
+            ( "5 mod 2", "1" ),
+            ( "5 mod -2", "1" ),
+            ( "-5 mod 2", "-1" ),
+            ( "-5 mod -2", "-1" ),
             ( "7 mod 0", "Dynamic Error" ),
             ( "7.0 mod 0", "Dynamic Error" ),
 
-            ( "3.5 mod 1.5", "(0.5)" ),
-            ( "3.5 mod -1.5", "(0.5)" ),
-            ( "-3.5 mod 1.5", "(-0.5)" ),
-            ( "-3.5 mod -1.5", "(-0.5)" ),
-            ( "4.5 mod 1.2", "(0.9000000000000001)" ),  // 0.9
+            ( "3.5 mod 1.5", "0.5" ),
+            ( "3.5 mod -1.5", "0.5" ),
+            ( "-3.5 mod 1.5", "-0.5" ),
+            ( "-3.5 mod -1.5", "-0.5" ),
+            ( "4.5 mod 1.2", "0.9000000000000001" ),  // 0.9
 // Decimalの精度???
-            ( "1.23e2 mod 0.6e1", "(3e0)" ),            // 123 mod 6 = 3
+            ( "1.23e2 mod 0.6e1", "3e0" ),            // 123 mod 6 = 3
 
             // XIDoubleの扱い:
-            ( "0.0e0 div 0.0e0", "(NaN)" ),
-            ( "(0.0e0 div 0.0e0) mod 5", "(NaN)" ), // NaN mod any = NaN
-            ( "5 mod (0.0e0 div 0.0e0)", "(NaN)" ), // any mod NaN = NaN
-            ( "7.0e0 div 0.0e0", "(+Infinity)" ),
-            ( "5 mod (7.0e0 div 0.0e0)", "(5e0)" ),   // N mod +∞ = N
-            ( "5 mod (-7.0e0 div 0.0e0)", "(5e0)" ),  // N mod -∞ = N
-            ( "0.0e0 mod 5", "(0e0)" ),              // 0 mod N = 0
+            ( "0.0e0 div 0.0e0", "NaN" ),
+            ( "(0.0e0 div 0.0e0) mod 5", "NaN" ), // NaN mod any = NaN
+            ( "5 mod (0.0e0 div 0.0e0)", "NaN" ), // any mod NaN = NaN
+            ( "7.0e0 div 0.0e0", "+Infinity" ),
+            ( "5 mod (7.0e0 div 0.0e0)", "5e0" ),   // N mod +∞ = N
+            ( "5 mod (-7.0e0 div 0.0e0)", "5e0" ),  // N mod -∞ = N
+            ( "0.0e0 mod 5", "0e0" ),              // 0 mod N = 0
         ]);
     }
 
@@ -380,20 +409,20 @@ mod test {
         "#);
 
         subtest_eval_xpath("minus_zero", &xml, &[
-            ( "round(-0.2)", "(0.0)" ),
-            ( "round(0.2)", "(0.0)" ),
+            ( "round(-0.2)", "0.0" ),
+            ( "round(0.2)", "0.0" ),
             ( "1.0 div round(-0.2)", "Dynamic Error" ),     // 負のゼロで除算
             ( "1.0 div round(0.2)", "Dynamic Error" ),      // 正のゼロで除算
-            ( "1.0 div ceiling(-0.2e0)", "(-Infinity)" ),
+            ( "1.0 div ceiling(-0.2e0)", "-Infinity" ),
 
-            ( "0 = -0", "(true)" ),
-            ( "0 != -0", "(false)" ),
-            ( "0 > -0", "(false)" ),
-            ( "0 = -0.0", "(true)" ),
+            ( "0 = -0", "true" ),
+            ( "0 != -0", "false" ),
+            ( "0 > -0", "false" ),
+            ( "0 = -0.0", "true" ),
             
-            ( "1.0 div (-0e0)", "(-Infinity)" ),
-            ( "1.0 div (- (4e0 - 4e0))", "(-Infinity)" ),
-            ( "1.0 div -(-0e0)", "(+Infinity)" ),
+            ( "1.0 div (-0e0)", "-Infinity" ),
+            ( "1.0 div (- (4e0 - 4e0))", "-Infinity" ),
+            ( "1.0 div -(-0e0)", "+Infinity" ),
         ]);
     }
 
@@ -409,8 +438,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("op_is_same_node", &xml, &[
-            ( r#"/a/p[@id="A"] is /a/p[@img="A"]"#, "(true)" ),
-            ( r#"/a/p[@id="A"] is /a/p[@img="B"]"#, "(false)" ),
+            ( r#"/a/p[@id="A"] is /a/p[@img="A"]"#, "true" ),
+            ( r#"/a/p[@id="A"] is /a/p[@img="B"]"#, "false" ),
         ]);
     }
 
@@ -426,8 +455,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("op_node_before", &xml, &[
-            ( r#"/a/p[@id="A"] << /a/p[@id="B"]"#, "(true)" ),
-            ( r#"/a/p[@id="B"] << /a/p[@id="A"]"#, "(false)" ),
+            ( r#"/a/p[@id="A"] << /a/p[@id="B"]"#, "true" ),
+            ( r#"/a/p[@id="B"] << /a/p[@id="A"]"#, "false" ),
         ]);
     }
 
@@ -443,8 +472,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("op_node_after", &xml, &[
-            ( r#"/a/p[@id="A"] >> /a/p[@id="B"]"#, "(false)" ),
-            ( r#"/a/p[@id="B"] >> /a/p[@id="A"]"#, "(true)" ),
+            ( r#"/a/p[@id="A"] >> /a/p[@id="B"]"#, "false" ),
+            ( r#"/a/p[@id="B"] >> /a/p[@id="A"]"#, "true" ),
         ]);
     }
 
@@ -545,7 +574,7 @@ mod test {
         subtest_eval_xpath("op_to", &xml, &[
             ( "1 to 3", "(1, 2, 3)" ),
             ( "3 to 1", "()" ),
-            ( "5 to 5", "(5)" ),
+            ( "5 to 5", "5" ),
         ]);
     }
 

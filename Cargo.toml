@@ -1,6 +1,6 @@
 [package]
 name = "amxml"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["KOYAMA Hiro <tac@amris.co.jp>"]
 description = "XML processor with some features of XPath 2.0 / 3.0 / 3.1"
 repository = "https://github.com/tac-am/amxml"

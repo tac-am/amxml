@@ -10,6 +10,7 @@ use std::f64;
 use std::i64;
 use std::usize;
 
+use dom::*;
 use xmlerror::*;
 use xpath_impl::eval::*;
 use xpath_impl::xitem::*;
@@ -19,6 +20,113 @@ use xpath_impl::xsequence::*;
 //
 fn usize_to_i64(n: usize) -> i64 {
     return n as i64;
+}
+
+// ---------------------------------------------------------------------
+// 函数のシグニチャー表。
+//
+const FUNC_SIGNATURE_TBL: [(
+        &str,               // NamedFunctionRef形式の函数名
+        &str);              // シグニチャー
+        86] = [
+    ( "fn:nilled#0", "function() as xs:boolean?" ),
+    ( "fn:nilled#1", "function(node()?) as xs:boolean?" ),
+    ( "fn:string#0", "function() as xs:string" ),
+    ( "fn:string#1", "function(item()?) as xs:string" ),
+    ( "fn:data#0", "function() as xs:anyAtomicType*" ),
+    ( "fn:data#1", "function(item()*) as xs:anyAtomicType*" ),
+    ( "fn:abs#1", "function(numeric?) as numeric?" ),
+    ( "fn:ceiling#1", "function(numeric?) as numeric?" ),
+    ( "fn:floor#1", "function(numeric?) as numeric?" ),
+    ( "fn:round#1", "function(numeric?) as numeric?" ),
+    ( "fn:number#0", "function() as xs:double" ),
+    ( "fn:number#1", "function(xs:anyAtomicType?) as xs:double" ),
+    ( "fn:codepoints-to-string#1", "function(xs:integer*) as xs:string" ),
+    ( "fn:string-to-codepoints#1", "function(xs:string*) as xs:integer*" ),
+    ( "fn:compare#2", "function(xs:string?, xs:string?) as xs:integer?" ),
+    ( "fn:compare#3", "function(xs:string?, xs:string?, xs:string) as xs:integer?" ),
+    ( "fn:codepoint-equal#2", "function(xs:string?, xs:string?) as xs:boolean?" ),
+    ( "fn:concat#2", "function(xs:anyAtomicType?, xs:anyAtomicType?) as xs:string" ),
+        // concatの引数は2個以上 (上限なし)
+    ( "fn:string-join#1", "function(xs:string*) as xs:string" ),
+    ( "fn:string-join#2", "function(xs:string*, xs:string) as xs:string" ),
+    ( "fn:substring#2", "function(xs:string?, xs:double) as xs:string" ),
+    ( "fn:substring#3", "function(xs:string?, xs:double, xs:double) as xs:string" ),
+    ( "fn:string-length#0", "function() as xs:integer" ),
+    ( "fn:string-length#1", "function(xs:string?) as xs:integer" ),
+    ( "fn:normalize-space#0", "function() as xs:integer" ),
+    ( "fn:normalize-space#1", "function(xs:string?) as xs:integer" ),
+    ( "fn:upper-case#1", "function(xs:string?) as xs:string" ),
+    ( "fn:lower-case#1", "function(xs:string?) as xs:string" ),
+    ( "fn:translate#3", "function(xs:string?, xs:string, xs:string) as xs:string" ),
+    ( "fn:contains#2", "function(xs:string?, xs:string?) as xs:boolean" ),
+    ( "fn:contains#3", "function(xs:string?, xs:string?, xs:string) as xs:boolean" ),
+    ( "fn:starts-with#2", "function(xs:string?, xs:string?) as xs:boolean" ),
+    ( "fn:starts-with#3", "function(xs:string?, xs:string?, xs:string) as xs:boolean" ),
+    ( "fn:ends-with#2", "function(xs:string?, xs:string?) as xs:boolean" ),
+    ( "fn:ends-with#3", "function(xs:string?, xs:string?, xs:string) as xs:boolean" ),
+    ( "fn:substring-before#2", "function(xs:string?, xs:string?) as xs:string" ),
+    ( "fn:substring-before#3", "function(xs:string?, xs:string?, xs:string) as xs:string" ),
+    ( "fn:substring-after#2", "function(xs:string?, xs:string?) as xs:string" ),
+    ( "fn:substring-after#3", "function(xs:string?, xs:string?, xs:string) as xs:string" ),
+    ( "fn:true#0", "function() as xs:boolean" ),
+    ( "fn:false#0", "function() as xs:boolean" ),
+    ( "fn:boolean#1", "function(item()*) as xs:boolean" ),
+    ( "fn:not#1", "function(item()*) as xs:boolean" ),
+    ( "fn:name#0", "function() as xs:string" ),
+    ( "fn:name#1", "function(node()?) as xs:string" ),
+    ( "fn:local-name#0", "function() as xs:string" ),
+    ( "fn:local-name#1", "function(node()?) as xs:string" ),
+    ( "fn:namespace-uri#0", "function() as xs:anyURI" ),
+    ( "fn:namespace-uri#1", "function(node()?) as xs:anyURI" ),
+    ( "fn:lang#1", "function(xs:string?) as xs:boolean" ),
+    ( "fn:lang#2", "function(xs:string?, node()) as xs:boolean" ),
+    ( "fn:root#0", "function() as node()" ),
+    ( "fn:root#1", "function(node()?) as node()?" ),
+    ( "fn:empty#1", "function(item()*) as xs:boolean" ),
+    ( "fn:exists#1", "function(item()*) as xs:boolean" ),
+    ( "fn:head#1", "function(item()*) as item()?" ),
+    ( "fn:tail#1", "function(item()*) as item()*" ),
+    ( "fn:insert-before#3", "function(item()*, xs:integer, item()*) as item()*" ),
+    ( "fn:remove#2", "function(item()*, xs:integer) as item()*" ),
+    ( "fn:reverse#1", "function(item()*) as item()*" ),
+    ( "fn:subsequence#2", "function(item()*, xs:double) as item()*" ),
+    ( "fn:subsequence#3", "function(item()*, xs:double, xs:double) as item()*" ),
+    ( "fn:index-of#2", "function(xs:anyAtomicType*, xs:anyAtomicType) as xs:integer*" ),
+    ( "fn:index-of#3", "function(xs:anyAtomicType*, xs:anyAtomicType, xs:string) as xs:integer*" ),
+    ( "fn:zero-or-one#1", "function(item()*) as item()?" ),
+    ( "fn:one-or-more#1", "function(item()*) as item()?" ),
+    ( "fn:exactly-one#1", "function(item()*) as item()?" ),
+    ( "fn:count#1", "function(item()*) as xs:integer" ),
+    ( "fn:avg#1", "function(xs:anyAtomicType*) as xs:anyAtomicType?" ),
+    ( "fn:max#1", "function(xs:anyAtomicType*) as xs:anyAtomicType?" ),
+    ( "fn:max#2", "function(xs:anyAtomicType*, xs:string) as xs:anyAtomicType?" ),
+    ( "fn:min#1", "function(xs:anyAtomicType*) as xs:anyAtomicType?" ),
+    ( "fn:min#2", "function(xs:anyAtomicType*, xs:string) as xs:anyAtomicType?"  ),
+    ( "fn:sum#1", "function(xs:anyAtomicType*) as xs:anyAtomicType?" ),
+    ( "fn:sum#2", "function(xs:anyAtomicType*, xs:anyAtomicType?) as xs:anyAtomicType?" ),
+    ( "fn:position#0", "function() as xs:integer" ),
+    ( "fn:last#0", "function() as xs:integer" ),
+    ( "fn:for-each#2", "function(item()*, function(item()) as item()*) as item()*" ),
+    ( "fn:filter#2", "function(item()*, function(item()) as xs:boolean) as item()*" ),
+    ( "map:size#1", "function(map(*)) as xs:integer" ),
+    ( "map:keys#1", "function(map(*)) as xs:anyAtomicType*" ),
+    ( "map:contains#2", "function(map(*), xs:anyAtomicType) as xs:boolean" ),
+    ( "map:get#2", "function(map(*), xs:anyAtomicType) as item()*" ),
+    ( "array:size#1", "function(array(*)) as xs:integer" ),
+    ( "array:get#2", "function(array(*), xs:integer) as item()*" ),
+    ( "array:flatten#1", "function(item()*) as item()*" ),
+];
+
+// ---------------------------------------------------------------------
+//
+pub fn get_function_signature(func_name: &str) -> String {
+    for (t_func_name, t_signature) in FUNC_SIGNATURE_TBL.iter() {
+        if *t_func_name == func_name {
+            return String::from(*t_signature);
+        }
+    }
+    return String::new();
 }
 
 // ---------------------------------------------------------------------
@@ -47,8 +155,9 @@ const FUNC_CONTEXT_TBL: [(
         &str,                   // 函数名
         fn(&Vec<&XSequence>, &XSequence, &mut EvalEnv) -> Result<XSequence, Box<Error>>);
                                 // 函数の実体: (引数、文脈シーケンス、評価環境)
-        14] = [
+        15] = [
 // 2
+    ( 0, "fn:nilled",          fn_nilled_0 ),
     ( 0, "fn:string",          fn_string_0 ),
     ( 0, "fn:data",            fn_data_0 ),
 // 4.5
@@ -84,8 +193,9 @@ const FUNC_TBL: [(
         &str,                   // 函数名
         fn(&Vec<&XSequence>) -> Result<XSequence, Box<Error>>);
                                 // 函数の実体: (引数)
-        51] = [
+        62] = [
 // 2
+    ( 1, "fn:nilled",                 fn_nilled ),
     ( 1, "fn:string",                 fn_string ),
     ( 1, "fn:data",                   fn_data ),
 // 4.4
@@ -100,6 +210,7 @@ const FUNC_TBL: [(
     ( 1, "fn:string-to-codepoints",   fn_string_to_codepoints ),
 // 5.3
     ( 2, "fn:compare",                fn_compare ),
+    ( 2, "fn:codepoint-equal",        fn_codepoint_equal ),
 // 5.4
     ( M, "fn:concat",                 fn_concat ),
     ( 1, "fn:string-join",            fn_string_join ),
@@ -132,6 +243,8 @@ const FUNC_TBL: [(
 // 14.1
     ( 1, "fn:empty",                  fn_empty ),
     ( 1, "fn:exists",                 fn_exists ),
+    ( 1, "fn:head",                   fn_head ),
+    ( 1, "fn:tail",                   fn_tail ),
     ( 3, "fn:insert-before",          fn_insert_before ),
     ( 2, "fn:remove",                 fn_remove ),
     ( 1, "fn:reverse",                fn_reverse ),
@@ -150,6 +263,15 @@ const FUNC_TBL: [(
     ( 1, "fn:min",                    fn_min ),
     ( 1, "fn:sum",                    fn_sum ),
     ( 2, "fn:sum",                    fn_sum ),
+// 17.1
+    ( 1, "map:size",                  map_size ),
+    ( 1, "map:keys",                  map_keys ),
+    ( 2, "map:contains",              map_contains ),
+    ( 2, "map:get",                   map_get ),
+// 17.3
+    ( 1, "array:size",                array_size ),
+    ( 2, "array:get",                 array_get ),
+    ( 1, "array:flatten",             array_flatten ),
 ];
 
 // ---------------------------------------------------------------------
@@ -218,6 +340,44 @@ pub fn evaluate_function(func_name: &str, args: &Vec<XSequence>,
 //      base-uri
 //      document-uri
 //
+// ---------------------------------------------------------------------
+// 2.2 fn:nilled
+// fn:nilled() as xs:boolean?
+// fn:nilled($arg as node()?) as xs:boolean?
+//
+// 次の条件を満たす場合にtrueを返す。ただし、当面、(b) の条件は無視する。
+// (a) 要素ノードで、属性 "xsi:nil" の値が "true" であること。
+// (b) XML Schema に照らして、nillable (空要素可) であること。
+//
+fn fn_nilled_0(_args: &Vec<&XSequence>, context_xseq: &XSequence,
+               _eval_env: &mut EvalEnv) -> Result<XSequence, Box<Error>> {
+    return fn_nilled(&vec!{context_xseq});
+}
+
+fn fn_nilled(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    }
+
+    if let Ok(node) = args[0].get_singleton_node() {
+        match node.node_type() {
+            NodeType::Element => {
+                if let Some(v) = node.attribute_value("xsi:nil") {
+                    if v == "true" {
+                        return Ok(new_singleton_boolean(true));
+                    }
+                }
+                return Ok(new_singleton_boolean(false));
+            },
+            _ => {
+                return Ok(new_xsequence());
+            },
+        }
+    } else {
+        return Err(type_error!("fn:nilled(), arg is not singleton node"));
+    }
+}
+
 // ---------------------------------------------------------------------
 // 2.3 fn:string
 // fn:string() as xs:string
@@ -403,7 +563,7 @@ fn fn_number(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 // 5.2.1 fn:codepoints-to-string
 // fn:codepoints-to-string($arg as xs:integer*) as xs:string
 //
-pub fn fn_codepoints_to_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+fn fn_codepoints_to_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     let mut v: Vec<u16> = vec!{};
     for item in args[0].iter() {
         let uni = item.get_as_raw_integer()? as u64;
@@ -426,14 +586,24 @@ pub fn fn_codepoints_to_string(args: &Vec<&XSequence>) -> Result<XSequence, Box<
 // 5.2.2 fn:string-to-codepoints
 // fn:string-to-codepoints($arg as xs:string?) as xs:integer*
 //
-pub fn fn_string_to_codepoints(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+fn fn_string_to_codepoints(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     if args[0].is_empty() {
         return Ok(new_xsequence());
     }
+
     let arg = args[0].get_singleton_string()?;
-    let arg_chars: Vec<char> = arg.chars().collect();
     let mut result = new_xsequence();
-    for ch in arg_chars.iter() {
+    for codepoint in string_to_codepoints_sub(&arg).iter() {
+        result.push(&new_xitem_integer(*codepoint as i64));
+    }
+
+    return Ok(result);
+}
+
+fn string_to_codepoints_sub(str: &String) -> Vec<u64> {
+    let str_chars: Vec<char> = str.chars().collect();
+    let mut result: Vec<u64> = vec!{};
+    for ch in str_chars.iter() {
         let mut b = [0; 2];
         ch.encode_utf16(&mut b);
 
@@ -441,13 +611,12 @@ pub fn fn_string_to_codepoints(args: &Vec<&XSequence>) -> Result<XSequence, Box<
         let lo = b[1] as u64;
         if 0xD800 <= hi && hi <= 0xDBFF && 0xDC00 <= lo && lo <= 0xDFFF {
             let uni: u64 = 0x10000 + (hi - 0xD800) * 0x0400 + (lo - 0xDC00);
-            result.push(&new_xitem_integer(uni as i64));
+            result.push(uni);
         } else {
-            result.push(&new_xitem_integer(hi as i64));
+            result.push(hi);
         }
     }
-
-    return Ok(result);
+    return result;
 }
 
 // ---------------------------------------------------------------------
@@ -482,6 +651,40 @@ pub fn fn_compare(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
     } else {
         return Ok(new_singleton_integer(1));
     }
+}
+
+// ---------------------------------------------------------------------
+// 5.3.7 fn:codepoint-equal
+// fn:codepoint-equal($comparand1 as xs:string?,
+//                    $comparand2 as xs:string?) as xs:boolean?
+// いずれかの引数が空シーケンスの場合、空シーケンスを返す。
+//
+fn fn_codepoint_equal(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() || args[1].is_empty() {
+        return Ok(new_xsequence());
+    }
+
+    let comparand1 = args[0].get_singleton_string()?;
+    let comparand2 = args[1].get_singleton_string()?;
+    let result = codepoint_equal_sub(&comparand1, &comparand2);
+    return Ok(new_singleton_boolean(result));
+}
+
+fn codepoint_equal_sub(str1: &String, str2: &String) -> bool {
+
+    let codepoints1 = string_to_codepoints_sub(&str1);
+    let codepoints2 = string_to_codepoints_sub(&str2);
+
+    if codepoints1.len() != codepoints2.len() {
+        return false;
+    }
+
+    for (i, cp) in codepoints1.iter().enumerate() {
+        if *cp != codepoints2[i] {
+            return false;
+        }
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------
@@ -1019,6 +1222,35 @@ fn fn_exists(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
 }
 
 // ---------------------------------------------------------------------
+// 14.1.3 fn:head
+// fn:head($arg as item()*) as item()?
+//
+fn fn_head(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    } else {
+        let item = args[0].get_item(0);
+        return Ok(new_singleton(&item));
+    }
+}
+
+// ---------------------------------------------------------------------
+// 14.1.4 fn:tail
+// fn:head($arg as item()*) as item()*
+//
+fn fn_tail(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    if args[0].is_empty() {
+        return Ok(new_xsequence());
+    } else {
+        let mut result = new_xsequence();
+        for i in 1..args[0].len() {
+            result.push(args[0].get_item(i));
+        }
+        return Ok(result);
+    }
+}
+
+// ---------------------------------------------------------------------
 // 14.1.5 fn:insert-before
 // fn:insert-before($target as item()*,
 //                  $position as xs:integer,
@@ -1345,6 +1577,104 @@ fn fn_filter(args: &Vec<&XSequence>, context_xseq: &XSequence,
 
 // ---------------------------------------------------------------------
 // 17 Maps and Arrays
+//
+// ---------------------------------------------------------------------
+// 17.1 Functions that Operate on Maps
+//
+
+// ---------------------------------------------------------------------
+// 17.1.3 map:size
+// map:size($map as map(*)) as xs:integer
+//
+fn map_size(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let xseq_map = args[0].get_singleton_map()?;
+    let size = xseq_map.map_size();
+    return Ok(new_singleton_integer(size as i64));
+}
+
+// ---------------------------------------------------------------------
+// 17.1.4 map:keys
+// map:keys($map as map(*)) as xs:anyAtomicType*
+//
+fn map_keys(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let xseq_map = args[0].get_singleton_map()?;
+    let mut result = new_xsequence();
+    for key in xseq_map.map_keys().iter() {
+        result.push(&key);
+    }
+    return Ok(result);
+}
+
+// ---------------------------------------------------------------------
+// 17.1.5 map:contains
+// map:contains($map as map(*), $key as xs:anyAtomicType) as xs:boolean
+//
+fn map_contains(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let xseq_map = args[0].get_singleton_map()?;
+    let key = args[1].get_singleton_item()?;
+    let result = xseq_map.map_contains(&key);
+    return Ok(new_singleton_boolean(result));
+}
+
+// ---------------------------------------------------------------------
+// 17.1.6 map:get
+// map:get($map as map(*), $key as xs:anyAtomicType) as item()*
+//
+fn map_get(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let xseq_map = args[0].get_singleton_map()?;
+    let key = args[1].get_singleton_item()?;
+    match xseq_map.map_get(&key) {
+        Some(v) => return Ok(v),
+        None => return Ok(new_xsequence()),
+    }
+}
+
+// ---------------------------------------------------------------------
+// 17.3 Functions that Operate on Arrays
+//
+
+// ---------------------------------------------------------------------
+// 17.3.1 array:size
+// array:size($array as array(*)) as xs:integer
+//
+fn array_size(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let xseq_array = args[0].get_singleton_array()?;
+    let size = xseq_array.array_size();
+    return Ok(new_singleton_integer(size as i64));
+}
+
+// ---------------------------------------------------------------------
+// 17.3.2 array:get
+// array:get($array as array(*), $position as xs:integer) as item()*
+//
+fn array_get(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let xseq_array = args[0].get_singleton_array()?;
+    let index = args[1].get_singleton_item()?;
+    match xseq_array.array_get(&index) {
+        Some(v) => return Ok(v),
+        None => return Ok(new_xsequence()),
+    }
+}
+
+// ---------------------------------------------------------------------
+// 17.3.18 array:flatten
+// array:flatten($input as item()*) as item()*
+//
+fn array_flatten(args: &Vec<&XSequence>) -> Result<XSequence, Box<Error>> {
+    let mut result = new_xsequence();
+    for xitem in args[0].iter() {
+        match xitem.get_as_raw_array() {
+            Ok(xseq_array) => {
+                result.append(&xseq_array.array_flatten());
+            },
+            _ => {
+                result.push(xitem);
+            },
+        }
+    }
+    return Ok(result);
+}
+
 // ---------------------------------------------------------------------
 // 18 Constructor Functions
 // ---------------------------------------------------------------------
@@ -1417,6 +1747,22 @@ mod test {
     use xpath_impl::helpers::subtest_eval_xpath;
 
     // -----------------------------------------------------------------
+    // 2.2 fn:nilled
+    //
+    #[test]
+    fn test_fn_nilled() {
+        let xml = compress_spaces(r#"
+<a base="base">
+    <b xsi:nil="true"/>
+</a>
+        "#);
+        subtest_eval_xpath("fn_nilled", &xml, &[
+            ( r#"nilled(.)"#, r#"false"# ),
+            ( r#"nilled(./b)"#, r#"true"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
     // 2.3 fn:string
     //
     #[test]
@@ -1427,13 +1773,13 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_string", &xml, &[
-            ( r#"string(37)"#, r#"("37")"# ),
-            ( r#"string(37.3)"#, r#"("37.3")"# ),
-            ( r#"string(true())"#, r#"("true")"# ),
-            ( r#"string()"#, r#"("string value")"# ),   // 文脈ノードの文字列値
-            ( r#"string(.)"#, r#"("string value")"# ),
-            ( r#"string(/a)"#, r#"("string value")"# ),
-            ( r#"string(/a/empty)"#, r#"("")"# ),
+            ( r#"string(37)"#, r#""37""# ),
+            ( r#"string(37.3)"#, r#""37.3""# ),
+            ( r#"string(true())"#, r#""true""# ),
+            ( r#"string()"#, r#""string value""# ),   // 文脈ノードの文字列値
+            ( r#"string(.)"#, r#""string value""# ),
+            ( r#"string(/a)"#, r#""string value""# ),
+            ( r#"string(/a/empty)"#, r#""""# ),
         ]);
     }
 
@@ -1449,7 +1795,7 @@ mod test {
         "#);
         subtest_eval_xpath("fn_data", &xml, &[
             ( r#"data((/a, 37))"#, r#"("Data", 37)"# ),
-            ( r#"data()"#, r#"("Data")"# ),
+            ( r#"data()"#, r#""Data""# ),
         ]);
     }
 
@@ -1463,10 +1809,10 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_abs", &xml, &[
-            ( "abs(10.5)", "(10.5)" ),
-            ( "abs(-10.5)", "(10.5)" ),
-            ( "abs(-0e0)", "(0e0)" ),
-            ( "abs(-1 div 0e0)", "(+Infinity)" ),
+            ( "abs(10.5)", "10.5" ),
+            ( "abs(-10.5)", "10.5" ),
+            ( "abs(-0e0)", "0e0" ),
+            ( "abs(-1 div 0e0)", "+Infinity" ),
         ]);
     }
 
@@ -1480,11 +1826,11 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_ceiling", &xml, &[
-            ( "ceiling(37)", "(37)" ),
-            ( "ceiling(10.5)", "(11.0)" ),
-            ( "ceiling(-10.5)", "(-10.0)" ),
-            ( "ceiling(-0e0)", "(-0e0)" ),          // 負のゼロ -> 負のゼロ
-            ( "ceiling(-0.2e0)", "(-0e0)" ),        // (-1, 0) -> 負のゼロ
+            ( "ceiling(37)", "37" ),
+            ( "ceiling(10.5)", "11.0" ),
+            ( "ceiling(-10.5)", "-10.0" ),
+            ( "ceiling(-0e0)", "-0e0" ),          // 負のゼロ -> 負のゼロ
+            ( "ceiling(-0.2e0)", "-0e0" ),        // (-1, 0) -> 負のゼロ
         ]);
     }
 
@@ -1498,11 +1844,11 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_floor", &xml, &[
-            ( "floor(37)", "(37)" ),
-            ( "floor(10.5)", "(10.0)" ),
-            ( "floor(-10.5)", "(-11.0)" ),
-            ( "floor(0e0)", "(0e0)" ),            // 正のゼロ -> 正のゼロ
-            ( "floor(-0e0)", "(-0e0)" ),          // 負のゼロ -> 負のゼロ
+            ( "floor(37)", "37" ),
+            ( "floor(10.5)", "10.0" ),
+            ( "floor(-10.5)", "-11.0" ),
+            ( "floor(0e0)", "0e0" ),            // 正のゼロ -> 正のゼロ
+            ( "floor(-0e0)", "-0e0" ),          // 負のゼロ -> 負のゼロ
         ]);
     }
 
@@ -1516,13 +1862,13 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_round", &xml, &[
-            ( "round(37)", "(37)" ),
-            ( "round(2.5)", "(3.0)" ),
-            ( "round(2.4999)", "(2.0)" ),
-            ( "round(-2.5)", "(-2.0)" ),
+            ( "round(37)", "37" ),
+            ( "round(2.5)", "3.0" ),
+            ( "round(2.4999)", "2.0" ),
+            ( "round(-2.5)", "-2.0" ),
                             // !! not the possible alternative, -3.0
-            ( "round(-0e0)", "(-0e0)" ),            // 負のゼロ -> 負のゼロ
-            ( "round(-0.3e0)", "(-0e0)" ),          // (-0.5, -0) -> 負のゼロ
+            ( "round(-0e0)", "-0e0" ),            // 負のゼロ -> 負のゼロ
+            ( "round(-0.3e0)", "-0e0" ),          // (-0.5, -0) -> 負のゼロ
         ]);
     }
 
@@ -1536,8 +1882,8 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_codepoints_to_string", &xml, &[
-            ( r#"codepoints-to-string((84, 104, 233, 114, 232, 115, 101))"#, r#"("Thérèse")"# ),
-            ( r#"codepoints-to-string((131072, 131073, 131074))"#, r#"("𠀀𠀁𠀂")"# ),
+            ( r#"codepoints-to-string((84, 104, 233, 114, 232, 115, 101))"#, r#""Thérèse""# ),
+            ( r#"codepoints-to-string((131072, 131073, 131074))"#, r#""𠀀𠀁𠀂""# ),
         ]);
     }
 
@@ -1567,8 +1913,27 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_compare", &xml, &[
-            ( r#"compare('abc', 'abc')"#, "(0)" ),
-            ( r#"compare('abc', 'abx')"#, "(-1)" ),
+            ( r#"compare('abc', 'abc')"#, "0" ),
+            ( r#"compare('abc', 'abx')"#, "-1" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 5.3.7 fn:codepoint-equal
+    //
+    #[test]
+    fn test_fn_codepoint_equal() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_codepoint_equal", &xml, &[
+            ( r#"codepoint-equal("abcd", "abcd")"#, "true" ),
+            ( r#"codepoint-equal("abcd", "abcZ")"#, "false" ),
+            ( r#"codepoint-equal("abcd", "abcd ")"#, "false" ),
+            ( r#"codepoint-equal("", "")"#, "true" ),
+            ( r#"codepoint-equal("", ())"#, "()" ),
+            ( r#"codepoint-equal((), ())"#, "()" ),
         ]);
     }
 
@@ -1583,11 +1948,11 @@ mod test {
         "#);
         subtest_eval_xpath("fn_concat", &xml, &[
 //            ( r#"concat("あい")"#, "Syntax Error in XPath" ),   // 引数不足
-            ( r#"concat("あい")"#, r#"("あい")"# ),   // 引数不足だが許容
-            ( r#"concat("あい", "うえ")"#, r#"("あいうえ")"# ),
-            ( r#"concat(123, 456, 789)"#, r#"("123456789")"# ),
-            ( r#"concat((), "A", ())"#, r#"("A")"# ),
-            ( r#"concat((), (), ())"#, r#"("")"# ),
+            ( r#"concat("あい")"#, r#""あい""# ),   // 引数不足だが許容
+            ( r#"concat("あい", "うえ")"#, r#""あいうえ""# ),
+            ( r#"concat(123, 456, 789)"#, r#""123456789""# ),
+            ( r#"concat((), "A", ())"#, r#""A""# ),
+            ( r#"concat((), (), ())"#, r#""""# ),
         ]);
     }
 
@@ -1605,8 +1970,8 @@ mod test {
 </doc>
         "#);
         subtest_eval_xpath("fn_string_join", &xml, &[
-            ( r#"string-join(('A', 'B', 'C'), 'x')"#, r#"("AxBxC")"# ),
-            ( r#"string-join(for $n in ancestor-or-self::* return name($n), '/')"#, r#"("doc/chap/section")"# ),
+            ( r#"string-join(('A', 'B', 'C'), 'x')"#, r#""AxBxC""# ),
+            ( r#"string-join(for $n in ancestor-or-self::* return name($n), '/')"#, r#""doc/chap/section""# ),
         ]);
     }
 
@@ -1620,22 +1985,22 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_substring", &xml, &[
-            ( r#"substring("ABCDE", 2, 3)"#, r#"("BCD")"# ),
-            ( r#"substring("ABCDE", 2)"#, r#"("BCDE")"# ),
-            ( r#"substring("ABCDE", 1.5, 2.6)"#, r#"("BCD")"# ),
-            ( r#"substring("ABCDE", 0, 3)"#, r#"("AB")"# ),
-            ( r#"substring("ABCDE", 5, -3)"#, r#"("")"# ),
-            ( r#"substring("ABCDE", -3, 5)"#, r#"("A")"# ),
-            ( r#"substring("ABCDE", 0 div 0e0, 3)"#, r#"("")"# ),
-            ( r#"substring("ABCDE", 1, 0 div 0e0)"#, r#"("")"# ),
+            ( r#"substring("ABCDE", 2, 3)"#, r#""BCD""# ),
+            ( r#"substring("ABCDE", 2)"#, r#""BCDE""# ),
+            ( r#"substring("ABCDE", 1.5, 2.6)"#, r#""BCD""# ),
+            ( r#"substring("ABCDE", 0, 3)"#, r#""AB""# ),
+            ( r#"substring("ABCDE", 5, -3)"#, r#""""# ),
+            ( r#"substring("ABCDE", -3, 5)"#, r#""A""# ),
+            ( r#"substring("ABCDE", 0 div 0e0, 3)"#, r#""""# ),
+            ( r#"substring("ABCDE", 1, 0 div 0e0)"#, r#""""# ),
 
-            ( r#"substring("ABCDE", -42, 1 div 0e0)"#, r#"("ABCDE")"# ),
-            ( r#"substring("ABCDE", -1 div 0e0, 1 div 0e0)"#, r#"("")"# ),
+            ( r#"substring("ABCDE", -42, 1 div 0e0)"#, r#""ABCDE""# ),
+            ( r#"substring("ABCDE", -1 div 0e0, 1 div 0e0)"#, r#""""# ),
 
-            ( r#"substring("あいうえお", 2, 3)"#, r#"("いうえ")"# ),
-            ( r#"substring("あいうえお", 2)"#, r#"("いうえお")"# ),
-            ( r#"substring("あいうえお", 1.5, 2.6)"#, r#"("いうえ")"# ),
-            ( r#"substring("あいうえお", 0, 3)"#, r#"("あい")"# ),
+            ( r#"substring("あいうえお", 2, 3)"#, r#""いうえ""# ),
+            ( r#"substring("あいうえお", 2)"#, r#""いうえお""# ),
+            ( r#"substring("あいうえお", 1.5, 2.6)"#, r#""いうえ""# ),
+            ( r#"substring("あいうえお", 0, 3)"#, r#""あい""# ),
         ]);
     }
 
@@ -1649,8 +2014,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_string_length", &xml, &[
-            ( r#"string-length('')"#, "(0)" ),
-            ( r#"string-length('かきくけこ')"#, "(5)" ),
+            ( r#"string-length('')"#, "0" ),
+            ( r#"string-length('かきくけこ')"#, "5" ),
         ]);
     }
 
@@ -1664,8 +2029,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_normalize_space", &xml, &[
-            ( r#"normalize-space('')"#, r#"("")"# ),
-            ( r#"normalize-space(' abc  def ')"#, r#"("abcdef")"# ),
+            ( r#"normalize-space('')"#, r#""""# ),
+            ( r#"normalize-space(' abc  def ')"#, r#""abcdef""# ),
         ]);
     }
 
@@ -1679,8 +2044,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_upper_case", &xml, &[
-            ( r#"upper-case('AbCdE')"#, r#"("ABCDE")"# ),
-            ( r#"upper-case('ΣЯσя')"#, r#"("ΣЯΣЯ")"# ),
+            ( r#"upper-case('AbCdE')"#, r#""ABCDE""# ),
+            ( r#"upper-case('ΣЯσя')"#, r#""ΣЯΣЯ""# ),
         ]);
     }
 
@@ -1694,8 +2059,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_lower_case", &xml, &[
-            ( r#"lower-case('AbCdE')"#, r#"("abcde")"# ),
-            ( r#"lower-case('ΣЯσя')"#, r#"("σяσя")"# ),
+            ( r#"lower-case('AbCdE')"#, r#""abcde""# ),
+            ( r#"lower-case('ΣЯσя')"#, r#""σяσя""# ),
         ]);
     }
 
@@ -1709,8 +2074,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_translate", &xml, &[
-            ( r#"translate("bar", "abc", "ABC")"#, r#"("BAr")"# ),
-            ( r#"translate("---aaa---", "abc-", "ABC")"#, r#"("AAA")"# ),
+            ( r#"translate("bar", "abc", "ABC")"#, r#""BAr""# ),
+            ( r#"translate("---aaa---", "abc-", "ABC")"#, r#""AAA""# ),
         ]);
     }
 
@@ -1724,11 +2089,11 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_contains", &xml, &[
-            ( r#"contains("かきくけこ", "きく")"#, "(true)" ),
-            ( r#"contains("かきくけこ", "たち")"#, "(false)" ),
-            ( r#"contains("", "たち")"#, "(false)" ),
-            ( r#"contains("かきくけこ", "")"#, "(true)" ),
-            ( r#"contains("", "")"#, "(true)" ),
+            ( r#"contains("かきくけこ", "きく")"#, "true" ),
+            ( r#"contains("かきくけこ", "たち")"#, "false" ),
+            ( r#"contains("", "たち")"#, "false" ),
+            ( r#"contains("かきくけこ", "")"#, "true" ),
+            ( r#"contains("", "")"#, "true" ),
         ]);
     }
 
@@ -1742,11 +2107,11 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_starts_with", &xml, &[
-            ( r#"starts-with("かきくけこ", "かき")"#, "(true)" ),
-            ( r#"starts-with("かきくけこ", "たち")"#, "(false)" ),
-            ( r#"starts-with("", "たち")"#, "(false)" ),
-            ( r#"starts-with("かきくけこ", "")"#, "(true)" ),
-            ( r#"starts-with("", "")"#, "(true)" ),
+            ( r#"starts-with("かきくけこ", "かき")"#, "true" ),
+            ( r#"starts-with("かきくけこ", "たち")"#, "false" ),
+            ( r#"starts-with("", "たち")"#, "false" ),
+            ( r#"starts-with("かきくけこ", "")"#, "true" ),
+            ( r#"starts-with("", "")"#, "true" ),
         ]);
     }
 
@@ -1760,11 +2125,11 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_ends_with", &xml, &[
-            ( r#"ends-with("かきくけこ", "けこ")"#, "(true)" ),
-            ( r#"ends-with("かきくけこ", "てと")"#, "(false)" ),
-            ( r#"ends-with("", "てと")"#, "(false)" ),
-            ( r#"ends-with("かきくけこ", "")"#, "(true)" ),
-            ( r#"ends-with("", "")"#, "(true)" ),
+            ( r#"ends-with("かきくけこ", "けこ")"#, "true" ),
+            ( r#"ends-with("かきくけこ", "てと")"#, "false" ),
+            ( r#"ends-with("", "てと")"#, "false" ),
+            ( r#"ends-with("かきくけこ", "")"#, "true" ),
+            ( r#"ends-with("", "")"#, "true" ),
         ]);
     }
 
@@ -1778,8 +2143,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_substring_before", &xml, &[
-            ( r#"substring-before("1999/04/01", "/")"#, r#"("1999")"# ),
-            ( r#"substring-before("1999/04/01", "X")"#, r#"("")"# ),
+            ( r#"substring-before("1999/04/01", "/")"#, r#""1999""# ),
+            ( r#"substring-before("1999/04/01", "X")"#, r#""""# ),
         ]);
     }
 
@@ -1793,8 +2158,8 @@ mod test {
 </a>
         "#);
         subtest_eval_xpath("fn_substring_after", &xml, &[
-            ( r#"substring-after("1999/04/01", "/")"#, r#"("04/01")"# ),
-            ( r#"substring-after("1999/04/01", "X")"#, r#"("")"# ),
+            ( r#"substring-after("1999/04/01", "/")"#, r#""04/01""# ),
+            ( r#"substring-after("1999/04/01", "X")"#, r#""""# ),
         ]);
     }
 
@@ -1842,8 +2207,8 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_name", &xml, &[
-            ( "name()", r#"("root")"# ),
-            ( "name(/root/*[1])", r#"("para")"# ),
+            ( "name()", r#""root""# ),
+            ( "name(/root/*[1])", r#""para""# ),
             ( "name(123)", "Dynamic Error" ),
         ]);
     }
@@ -1870,16 +2235,16 @@ mod test {
 </xroot>
         "#);
         subtest_eval_xpath("fn_lang", &xml, &[
-            ( "//para[@id='A'][lang('en')]", r#"(<para id="A" xml:lang="en">)"# ),
+            ( "//para[@id='A'][lang('en')]", r#"<para id="A" xml:lang="en">"# ),
             ( "//para[@id='A'][lang('ja')]", r#"()"# ),
 
-            ( "count(//para[@id='A'][lang('en')])", "(1)" ),
-            ( "count(//div[@id='B'][lang('en')])", "(1)" ),
-            ( "count(//para[@id='C'][lang('en')])", "(1)" ),
-            ( "count(//para[@id='D'][lang('en')])", "(1)" ),
-            ( "count(//para[@id='E'][lang('en')])", "(1)" ),
-            ( "count(//para[@id='F'][lang('en')])", "(0)" ),
-            ( "count(//para[@id='A'][lang('ja')])", "(0)" ),
+            ( "count(//para[@id='A'][lang('en')])", "1" ),
+            ( "count(//div[@id='B'][lang('en')])", "1" ),
+            ( "count(//para[@id='C'][lang('en')])", "1" ),
+            ( "count(//para[@id='D'][lang('en')])", "1" ),
+            ( "count(//para[@id='E'][lang('en')])", "1" ),
+            ( "count(//para[@id='F'][lang('en')])", "0" ),
+            ( "count(//para[@id='A'][lang('ja')])", "0" ),
         ]);
     }
 
@@ -1895,8 +2260,8 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_root", &xml, &[
-            ( "root()", "((DocumentRoot))" ),
-            ( "root(/root/para)", "((DocumentRoot))" ),
+            ( "root()", "(DocumentRoot)" ),
+            ( "root(/root/para)", "(DocumentRoot)" ),
             ( "root(/root/empty)", "()" ),
             ( "root(45)", "Dynamic Error" ),
         ]);
@@ -1912,8 +2277,8 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_empty", &xml, &[
-            ( "empty(())", "(true)" ),
-            ( r#"empty(("ABC"))"#, "(false)" ),
+            ( "empty(())", "true" ),
+            ( r#"empty(("ABC"))"#, "false" ),
         ]);
     }
 
@@ -1927,8 +2292,43 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_exists", &xml, &[
-            ( "exists(())", "(false)" ),
-            ( r#"exists(("ABC"))"#, "(true)" ),
+            ( "exists(())", "false" ),
+            ( r#"exists(("ABC"))"#, "true" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 14.1.3 fn:head
+    //
+    #[test]
+    fn test_fn_head() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_head", &xml, &[
+            ( r#"head(1 to 5)"#, "1" ),
+            ( r#"head(("A", "B", "C"))"#, r#""A""# ),
+            ( r#"head(())"#, r#"()"# ),
+            ( r#"head([1, 2, 3])"#, r#"[1, 2, 3]"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 14.1.4 fn:tail
+    //
+    #[test]
+    fn test_fn_tail() {
+        let xml = compress_spaces(r#"
+<root base="base">
+</root>
+        "#);
+        subtest_eval_xpath("fn_tail", &xml, &[
+            ( r#"tail(1 to 5)"#, "(2, 3, 4, 5)" ),
+            ( r#"tail(("A", "B", "C"))"#, r#"("B", "C")"# ),
+            ( r#"tail("a")"#, r#"()"# ),
+            ( r#"tail(())"#, r#"()"# ),
+            ( r#"tail([1, 2, 3])"#, r#"()"# ),
         ]);
     }
 
@@ -2027,7 +2427,7 @@ mod test {
         "#);
         subtest_eval_xpath("fn_zero_or_one", &xml, &[
             ( "zero-or-one(())", "()" ),
-            ( "zero-or-one((5))", "(5)" ),
+            ( "zero-or-one((5))", "5" ),
             ( "zero-or-one((5, 8))", "Dynamic Error" ),
         ]);
     }
@@ -2043,7 +2443,7 @@ mod test {
         "#);
         subtest_eval_xpath("fn_one_or_more", &xml, &[
             ( "one-or-more(())", "Dynamic Error" ),
-            ( "one-or-more((5))", "(5)" ),
+            ( "one-or-more((5))", "5" ),
             ( "one-or-more((5, 8))", "(5, 8)" ),
         ]);
     }
@@ -2059,7 +2459,7 @@ mod test {
         "#);
         subtest_eval_xpath("fn_exactly_one", &xml, &[
             ( "exactly-one(())", "Dynamic Error" ),
-            ( "exactly-one((5))", "(5)" ),
+            ( "exactly-one((5))", "5" ),
             ( "exactly-one((5, 8))", "Dynamic Error" ),
         ]);
     }
@@ -2075,9 +2475,9 @@ mod test {
         "#);
         subtest_eval_xpath("fn_avg", &xml, &[
             ( "avg(())", "()" ),
-            ( "avg((3, 4, 5))", "(4.0)" ),
-            ( "avg((1e0 div 0e0, 1e0 div 0e0))", "(+Infinity)" ),
-            ( "avg((1e0 div 0e0, -1e0 div 0e0))", "(NaN)" ),
+            ( "avg((3, 4, 5))", "4.0" ),
+            ( "avg((1e0 div 0e0, 1e0 div 0e0))", "+Infinity" ),
+            ( "avg((1e0 div 0e0, -1e0 div 0e0))", "NaN" ),
         ]);
     }
 
@@ -2092,8 +2492,8 @@ mod test {
         "#);
         subtest_eval_xpath("fn_max", &xml, &[
             ( "max(())", "()" ),
-            ( "max((3, 4, 5))", "(5)" ),
-            ( r#"max(("a", "b", "c"))"#, r#"("c")"# ),
+            ( "max((3, 4, 5))", "5" ),
+            ( r#"max(("a", "b", "c"))"#, r#""c""# ),
             ( r#"max((3, 4, "zero"))"#, "Type Error" ),
         ]);
     }
@@ -2109,8 +2509,8 @@ mod test {
         "#);
         subtest_eval_xpath("fn_min", &xml, &[
             ( "min(())", "()" ),
-            ( "min((3, 4, 5))", "(3)" ),
-            ( r#"min(("a", "b", "c"))"#, r#"("a")"# ),
+            ( "min((3, 4, 5))", "3" ),
+            ( r#"min(("a", "b", "c"))"#, r#""a""# ),
             ( r#"min((3, 4, "zero"))"#, "Type Error" ),
         ]);
     }
@@ -2125,12 +2525,12 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_sum", &xml, &[
-            ( "sum((1, 2, 3))", "(6)" ),
-            ( "sum((1.5, 2.5, 3))", "(7.0)" ),
-            ( "sum((1, 2, 3), (99))", "(6)" ),
-            ( "sum(())", "(0)" ),
-            ( "sum((), (99))", "(99)" ),
-            ( r#"sum(("1", "2", "3"))"#, "(6e0)" ),
+            ( "sum((1, 2, 3))", "6" ),
+            ( "sum((1.5, 2.5, 3))", "7.0" ),
+            ( "sum((1, 2, 3), (99))", "6" ),
+            ( "sum(())", "0" ),
+            ( "sum((), (99))", "99" ),
+            ( r#"sum(("1", "2", "3"))"#, "6e0" ),
         ]);
     }
 
@@ -2158,15 +2558,15 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_position", &xml, &[
-            ( "position()", "(0)" ),
-            ( "/root/a[position() = 2]", r#"(<a id="2">)"# ),
+            ( "position()", "0" ),
+            ( "/root/a[position() = 2]", r#"<a id="2">"# ),
             ( "/root/a[not(position() = 2)]", r#"(<a id="1">, <a id="3">)"# ),
             ( "/root/a[position()=3 or position()=2]", r#"(<a id="2">, <a id="3">)"# ),
-            ( "/root/a[position()=2]/b[position()=1]", r#"(<b id="1">)"# ),
-            ( "/root/a[position()=2]/b[position()=1]/c[position()=3]", r#"(<c id="3">)"# ),
+            ( "/root/a[position()=2]/b[position()=1]", r#"<b id="1">"# ),
+            ( "/root/a[position()=2]/b[position()=1]/c[position()=3]", r#"<c id="3">"# ),
             ( "/root/a[position()=2], position()", r#"(<a id="2">, 0)"# ),
             ( "//a[position()=2]", r#"(<a id="2">, <a id="x2">)"# ),
-            ( ".[position()=1]", r#"(<b id="3" base="base">)"# ),
+            ( ".[position()=1]", r#"<b id="3" base="base">"# ),
             ( ".[position()=3]", r#"()"# ),
         ]);
     }
@@ -2192,10 +2592,10 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_last", &xml, &[
-            ( "/root/a[last()]", r#"(<a id="3">)"# ),
-            ( "/root/a[position()=last()-1]", r#"(<a id="2">)"# ),
-            ( "/root/a[position()=last()-1]/b[position()=last()-2]", r#"(<b id="1">)"# ),
-            ( "/root/a[position()=last()-1]/b[position()=last()-2]/c[position()=last()]", r#"(<c id="3">)"# ),
+            ( "/root/a[last()]", r#"<a id="3">"# ),
+            ( "/root/a[position()=last()-1]", r#"<a id="2">"# ),
+            ( "/root/a[position()=last()-1]/b[position()=last()-2]", r#"<b id="1">"# ),
+            ( "/root/a[position()=last()-1]/b[position()=last()-2]/c[position()=last()]", r#"<c id="3">"# ),
         ]);
     }
 
@@ -2209,7 +2609,7 @@ mod test {
 </root>
         "#);
         subtest_eval_xpath("fn_for_each", &xml, &[
-            ( "for-each(1 to 4, function($x as integer) { $x * $x })", "(1, 4, 9, 16)" ),
+            ( "for-each(1 to 4, function($x as xs:integer) { $x * $x })", "(1, 4, 9, 16)" ),
             ( r#"for-each(("john", "jane"), fn:string-to-codepoints#1)"#,
                         "(106, 111, 104, 110, 106, 97, 110, 101)" ),
         ]);
@@ -2226,6 +2626,111 @@ mod test {
         "#);
         subtest_eval_xpath("fn_filter", &xml, &[
             ( "filter(1 to 10, function($a) { $a mod 2 = 0 })", "(2, 4, 6, 8, 10)" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.1.3 map:size
+    //
+    #[test]
+    fn test_map_size() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("map_size", &xml, &[
+            ( "map:size(map{})", "0" ),
+            ( r#"map:size(map{"true":1, "false":0})"#, "2" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.1.4 map:keys
+    //
+    #[test]
+    fn test_map_keys() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("map_keys", &xml, &[
+            ( "map:keys(map{})", "()" ),
+            ( r#"map:keys(map{"true":1, "false":0})"#, r#"("true", "false")"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.1.5 map:contains
+    //
+    #[test]
+    fn test_map_contains() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("map_contans", &xml, &[
+            ( r#"map:contains(map{"a":1, "b":0}, "a")"#, r#"true"# ),
+            ( r#"map:contains(map{"a":1, "b":0}, "z")"#, r#"false"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.1.6 map:get
+    //
+    #[test]
+    fn test_map_get() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("map_get", &xml, &[
+            ( r#"map:get(map{"true":1, "false":0}, "true")"#, r#"1"# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.3.1 array:size
+    //
+    #[test]
+    fn test_array_size() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("array_size", &xml, &[
+            ( "array:size([1, 2, 3])", "3" ),
+            ( "array:size([])", "0" ),
+            ( "array:size([[]])", "1" ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.3.2 array:get
+    //
+    #[test]
+    fn test_array_get() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("array_get", &xml, &[
+            ( r#"[ "a", "b", "c"] => array:get(2)"#, r#""b""# ),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
+    // 17.3.18 array:flatten
+    //
+    #[test]
+    fn test_array_flatten() {
+        let xml = compress_spaces(r#"
+<root>
+</root>
+        "#);
+        subtest_eval_xpath("array_flatten", &xml, &[
+            ( "array:flatten([1, 3, 5])", "(1, 3, 5)" ),
+            ( "array:flatten([(1, 0), (1, 1)])", "(1, 0, 1, 1)" ),
+            ( "array:flatten(([1, 3], [[5, 7], 9], [], 11))", "(1, 3, 5, 7, 9, 11)" ),
         ]);
     }
 }

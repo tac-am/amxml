@@ -17,10 +17,10 @@
 //!
 //! cf. <a href="../dom/index.html">Module amxml::dom</a> -&gt; <a href="../dom/struct.NodePtr.html">Struct NodePtr</a> -&gt; <a href="../dom/struct.NodePtr.html#methods">Methods</a>.
 //!
-//! # New features in Version 0.5.1
+//! # New features in Version 0.5.2
 //!
-//! - map/array constructor
-//! - map/array lookup (function call syntax)
+//! - map/array lookup
+//! - function/map/array test (instance of)
 //!
 //! ### Notes
 //!
@@ -36,28 +36,28 @@
 //!
 //! ### Built-in functions that are implemented
 //!
-//! - string, data
+//! - nilled, string, data
 //! - abs, ceiling, floor, round
 //! - codepoints-to-string, string-to-codepoints
-//! - compare
+//! - compare, codepoint-equal
 //! - concat, string-join, substring, string-length, normalize-space, upper-case, lower-case, translate
 //! - contains, starts-with, ends-with, substring-before, substring-after
 //! - true, false
 //! - not
 //! - name, local-name, namespace-uri, number, lang, root
-//! - boolean, index-of, empty, exists, insert-before, remove, reverse, subsequence
+//! - boolean, index-of
+//! - empty, exists, head, tail, insert-before, remove, reverse, subsequence
 //! - zero-or-one, one-or-more, exactly-one
 //! - count, avg, max, min, sum
 //! - position, last
 //! - for-each, filter
+//! - map:size, map:keys, map:contains, map:get
+//! - array:size, array:get, array:flatten
 //!
 //! ### Features that are not implemented yet
 //!
-//! - Lookup / UnaryLookup
-//! - instance of
 //! - treat as
 //! - KindTest: SchemaElementTest | SchemaAttributeTest | DocumentTest
-//! - KindTest: ElementTest | AttributeTest (form with TypeName)
 //! - Many built-in functions that are new in XPath 2.0 and above
 //! - Collation (in built-in functions: contains, starts-with, etc.)
 //! - XPath 1.0 compatible mode
@@ -88,7 +88,7 @@ impl NodePtr {
     /// let xml = r#"<root><a v="x"/><a v="y"/></root>"#;
     /// let doc = new_document(xml).unwrap();
     /// let result = doc.eval_xpath(r#"some $a in /root/a satisfies $a/@v = "y" "#).unwrap();
-    /// assert_eq!(result.to_string(), "(true)");
+    /// assert_eq!(result.to_string(), "true");
     /// ```
     ///
     /// # Errors
