@@ -17,10 +17,11 @@
 //!
 //! cf. <a href="../dom/index.html">Module amxml::dom</a> -&gt; <a href="../dom/struct.NodePtr.html">Struct NodePtr</a> -&gt; <a href="../dom/struct.NodePtr.html#methods">Methods</a>.
 //!
-//! # New features in Version 0.5.2
+//! ### Specification
 //!
-//! - map/array lookup
-//! - function/map/array test (instance of)
+//! Specification of XPath by W3C: <a href="https://www.w3.org/TR/xpath-31/">XML Path Language (XPath) 3.1</a>
+//!
+//! Japanese translation of the document above: <a href="https://www.amris.co.jp/xp/xpath31.html">XML Path Language (XPath) 3.1: 日本語訳</a>
 //!
 //! ### Notes
 //!

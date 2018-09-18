@@ -24,7 +24,7 @@
 //! in the course of manipurating.
 //!
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::fmt;
 use std::rc::{Rc, Weak};
@@ -116,7 +116,7 @@ pub enum NodeType {
 #[derive(Debug)]
 struct Node {
     node_type: NodeType,
-    node_id: i64,
+    order: Cell<i64>,
     name: String,
     value: String,
     parent: Option<RefCell<Weak<Node>>>,
@@ -125,37 +125,28 @@ struct Node {
 }
 
 // ---------------------------------------------------------------------
-// Node.node_id: 生成した個々のNodeを一意に識別する番号。
-// 生成する都度、G_NODE_ID_SEQから続き番号を払い出す。
-//
-static mut G_NODE_ID_SEQ: i64 = 0;
-
-// ---------------------------------------------------------------------
 // RcNodeを生成する。親があるとは限らない。
 //
 fn make_new_rc_node(node_type: NodeType,
                 parent: Option<&mut RcNode>,
                 name: &str, value: &str) -> RcNode {
-    unsafe {
-        G_NODE_ID_SEQ += 1;
-        let node = Rc::new(Node {
-            node_type,
-            node_id: G_NODE_ID_SEQ,
-            name: String::from(name),
-            value: String::from(value),
-            parent: match parent {
-                Some(p) => Some(RefCell::new(Rc::downgrade(p))),
-                None => None,
-            },
-            children: RefCell::new(vec!{}),
-            attributes: RefCell::new(vec!{}),
-        });
-        return node;
-    }
+    let node = Rc::new(Node {
+        node_type,
+        order: Cell::new(0),
+        name: String::from(name),
+        value: String::from(value),
+        parent: match parent {
+            Some(p) => Some(RefCell::new(Rc::downgrade(p))),
+            None => None,
+        },
+        children: RefCell::new(vec!{}),
+        attributes: RefCell::new(vec!{}),
+    });
+    return node;
 }
 
 // ---------------------------------------------------------------------
-// RcNodeを生成する。既存の親 (parent) の子として生成する。
+// RcNodeを、既存の親 (parent) の子として生成する。
 // // したがって、DocumentRootやAttributeの生成には使えない。
 //
 fn make_new_child_rc_node(node_type: NodeType, parent: &mut RcNode,
@@ -624,6 +615,7 @@ impl NodePtr {
         let rc_self = self.unwrap_rc();
         let rc_new_child = new_child.unwrap_rc();
         rc_self.children.borrow_mut().push(Rc::clone(&rc_new_child));
+        self.clear_document_order();
     }
 
     // =================================================================
@@ -667,6 +659,7 @@ impl NodePtr {
                 n);
             shallow_copy_rc_rels(&mut rc_new_node_dup, &rc_new_node);
         }
+        self.clear_document_order();
     }
 
     // =================================================================
@@ -710,6 +703,7 @@ impl NodePtr {
                 n + 1);
             shallow_copy_rc_rels(&mut rc_new_node_dup, &rc_new_node);
         }
+        self.clear_document_order();
     }
 
     // =================================================================
@@ -739,6 +733,7 @@ impl NodePtr {
             let rc_node = self.unwrap_rc();
             (*rc_node).children.borrow_mut().remove(n);
         }
+        self.clear_document_order();
     }
 
     // =================================================================
@@ -770,6 +765,7 @@ impl NodePtr {
         };
         self.insert_as_previous_sibling(new_node);
         parent.delete_child(self);
+        self.clear_document_order();
     }
 
     // -----------------------------------------------------------------
@@ -843,6 +839,7 @@ impl NodePtr {
         } else {
             (*rc_node).attributes.borrow_mut().push(Rc::clone(&attr_node));
         }
+        self.clear_document_order();
     }
 
     // =================================================================
@@ -866,6 +863,7 @@ impl NodePtr {
             let rc_node = self.unwrap_rc();
             (*rc_node).attributes.borrow_mut().remove(r_index);
         }
+        self.clear_document_order();
     }
 
     // -----------------------------------------------------------------
@@ -880,11 +878,44 @@ impl NodePtr {
         return usize::MAX;
     }
 
+    // -----------------------------------------------------------------
+    //
+    fn clear_document_order(&self) {
+        let root = self.root();
+        root.unwrap_rc().order.set(0);
+    }
+
     // =================================================================
-    /// (Inner Use) Returns node_id.
+    /// (Inner Use)
     ///
-    pub fn node_id(&self) -> i64 {
-        return self.unwrap_rc().node_id;
+    pub fn document_order(&self) -> i64 {
+        let root = self.root();
+        if root.unwrap_rc().order.get() == 0 {
+            root.setup_document_order();
+        }
+        return self.unwrap_rc().order.get();
+    }
+
+    // -----------------------------------------------------------------
+    //
+    fn setup_document_order(&self) {
+        self.setup_document_order_sub(1);
+    }
+
+    // -----------------------------------------------------------------
+    //
+    fn setup_document_order_sub(&self, order_beg: i64) -> i64 {
+        let mut order = order_beg;
+        self.unwrap_rc().order.set(order);
+        order += 1;
+        for at in self.attributes().iter() {
+            at.unwrap_rc().order.set(order);
+            order += 1;
+        }
+        for ch in self.children().iter() {
+            order = ch.setup_document_order_sub(order + 1);
+        }
+        return order;
     }
 
     // =================================================================

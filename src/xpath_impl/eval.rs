@@ -54,7 +54,6 @@ struct VarNameValue {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct EvalEnv {
-    doc_order_hash: HashMap<i64, i64>,      // node_id -> 順序番号
     position: usize,                        // 組み込み函数 position() の値
     last: usize,                            // 組み込み函数 last() の値
     var_vec: Vec<VarNameValue>,             // 変数表
@@ -63,7 +62,6 @@ pub struct EvalEnv {
 
 fn new_eval_env() -> EvalEnv {
     return EvalEnv{
-        doc_order_hash: HashMap::new(),
         position: 0,
         last: 0,
         var_vec: vec!{},
@@ -71,25 +69,6 @@ fn new_eval_env() -> EvalEnv {
 }
 
 impl EvalEnv {
-    // -----------------------------------------------------------------
-    // 文書順を調べ、登録しておく。
-    //
-    fn setup_doc_order(&mut self, node: &NodePtr) {
-        self.setup_doc_order_sub(&node.root(), 1);
-    }
-    fn setup_doc_order_sub(&mut self, node: &NodePtr, order_beg: i64) -> i64 {
-        let mut order = order_beg;
-        self.doc_order_hash.insert(node.node_id(), order);
-        order += 1;
-        for at in node.attributes().iter() {
-            self.doc_order_hash.insert(at.node_id(), order);
-            order += 1;
-        }
-        for ch in node.children().iter() {
-            order = self.setup_doc_order_sub(ch, order + 1);
-        }
-        return order;
-    }
 
     // -----------------------------------------------------------------
     // 文書順に整列し、重複を除去する。
@@ -103,7 +82,7 @@ impl EvalEnv {
         });
         let mut i = node_array.len() - 1;
         while 0 < i {
-            if node_array[i].node_id() == node_array[i - 1].node_id() {
+            if node_array[i] == node_array[i - 1] {
                 node_array.remove(i);
             }
             i -= 1;
@@ -114,8 +93,8 @@ impl EvalEnv {
     // 文書順を比較し、Ordering::{Less,Equal,Greater} を返す。
     //
     pub fn compare_by_doc_order(&self, a: &NodePtr, b: &NodePtr) -> Ordering {
-        let a_order = self.doc_order_hash.get(&a.node_id()).unwrap_or(&0);
-        let b_order = self.doc_order_hash.get(&b.node_id()).unwrap_or(&0);
+        let a_order = a.document_order();
+        let b_order = b.document_order();
         return a_order.cmp(&b_order);
     }
 
@@ -192,7 +171,6 @@ impl EvalEnv {
 pub fn match_xpath(start_node: &NodePtr, xnode: &XNodePtr) -> Result<XSequence, Box<Error>> {
 
     let mut eval_env = new_eval_env();
-    eval_env.setup_doc_order(start_node);
 
     let start_xsequence = new_singleton_node(start_node);
     return evaluate_xnode(&start_xsequence, xnode, &mut eval_env);
@@ -1150,9 +1128,9 @@ fn match_name_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
 // - attribute()、attribute(*): 任意の属性ノードに合致。
 // - attribute(AttributeName): 属性名が一致。
 // - attribute(AttributeName, TypeName):
-//       属性名が一致し、derives-from(xs:untyped, TypeName) が true。
+//       属性名が一致し、derives-from(xs:untypedAtomic, TypeName) が true。
 // - attribute(*, TypeName):
-//       derives-from(xs:untyped, TypeName) が true。
+//       derives-from(xs:untypedAtomic, TypeName) が true。
 //
 fn match_kind_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
     // assert:: get_xnode_type(&kind_test_xnode) == XNodeType::KindTest
@@ -1209,7 +1187,7 @@ fn match_kind_test(node: &NodePtr, xnode: &XNodePtr) -> bool {
             let type_name_xnode = get_left(&test_xnode);
             let type_name = get_xnode_name(&type_name_xnode);
                     // 明示的に指定がない場合の既定値は xs:anyType
-            if ! derives_from("xs:untyped", &type_name) {
+            if ! derives_from("xs:untypedAtomic", &type_name) {
                 return false;
             }
 
@@ -2373,6 +2351,7 @@ fn derives_from(ai: &str, bi: &str) -> bool {
         ( "xs:anyURI",        "xs:string" ),
                 // anyURIは常にstringに昇格可能
         ( "xs:boolean",       "xs:anyAtomicType" ),
+        ( "xs:untypedAtomic", "xs:anyAtomicType" ),
         ( "xs:anyAtomicType", "xs:anySimpleType" ),
         ( "xs:anySimpleType", "xs:anyType" ),
         ( "xs:untyped",       "xs:anyType" ),

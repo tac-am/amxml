@@ -5,7 +5,6 @@
 // Copyright (C) 2018 KOYAMA Hiro <tac@amris.co.jp>
 //
 
-//use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::f64;
@@ -368,21 +367,6 @@ impl NodePtr {
         }
     }
 
-    // =================================================================
-    // dm:node-kind($n as node()) as xs:string
-    //
-//    fn dm_node_kind(&self) -> String {
-//        match self.node_type() {
-//            NodeType::Attribute => return String::from("attribute"),
-//            NodeType::Comment => return String::from("comment"),
-//            NodeType::DocumentRoot => return String::from("document"),
-//            NodeType::Element => return String::from("element"),
-//            NodeType::Instruction => return String::from("processing-instruction"),
-//            // "namespace"
-//            NodeType::Text => return String::from("text"),
-//            _ => return String::new(),
-//        }
-//    }
 }
 
 // =====================================================================
@@ -463,33 +447,6 @@ impl XItem {
             XItem::XIBoolean{value: _} => return String::from("xs:boolean"),
         }
     }
-
-    // -----------------------------------------------------------------
-    //
-//    pub fn instance_of(&self, xs_type: &str) -> bool {
-//        let derived_from: HashMap<&str, &str> = [
-//            ( "xs:integer",       "xs:decimal" ),
-//            ( "xs:decimal",       "xs:numeric" ),
-//            ( "xs:double",        "xs:numeric" ),
-//                    // numericは、実際には union {decimal, float, double}
-//            ( "xs:numeric",       "xs:anyAtomicType" ),
-//            ( "xs:string",        "xs:anyAtomicType" ),
-//            ( "xs:boolean",       "xs:anyAtomicType" ),
-//            ( "xs:anyAtomicType", "xs:anySimpleType" ),
-//            ( "xs:anySimpleType", "xs:anyType" ),
-//        ].iter().cloned().collect();
-//
-//        let mut self_type = self.xs_type();
-//        loop {
-//            if self_type.as_str() == xs_type {
-//                return true;
-//            }
-//            match derived_from.get(self_type.as_str()) {
-//                Some(s) => self_type = String::from(*s),
-//                None => return false,
-//            }
-//        }
-//    }
 
     // -----------------------------------------------------------------
     //
