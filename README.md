@@ -119,7 +119,7 @@ assert_eq!(result.to_string(), "(George, false, Harry, true, Ivonne, false)");
 
 ```
 
-# Manipurating the DOM node
+# Manipulating the DOM node
 
 Inserting / replacing / deleting the DOM node can be done by
 methods like <strong>append_child()</strong>,
