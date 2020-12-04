@@ -119,7 +119,7 @@ assert_eq!(result.to_string(), "(George, false, Harry, true, Ivonne, false)");
 
 ```
 
-# Manipurating the DOM node
+# Manipulating the DOM node
 
 Inserting / replacing / deleting the DOM node can be done by
 methods like <strong>append_child()</strong>,
@@ -130,3 +130,7 @@ methods like <strong>append_child()</strong>,
 
 See the description and example of corresponding method.
 
+# License
+Axml is dual licensed with Apache-2.0 OR MIT. 
+See the license files LICENSE-APACHE or LICENSE-MIT.
+SPDX-License-Identifier: Apache-2.0 OR MIT
